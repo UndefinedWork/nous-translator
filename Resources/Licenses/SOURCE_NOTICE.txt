@@ -1,0 +1,17 @@
+Nous Translator source provenance
+
+The native application code was extracted from cellier/Pico at commit:
+450fa2bc1dbf5651da513c2a2efd4c234f1dc7e2
+https://github.com/cellier/Pico/tree/450fa2bc1dbf5651da513c2a2efd4c234f1dc7e2
+
+That baseline did not declare an open-source license for the Pico application
+code. Publishing the Nous Translator source does not itself grant an
+open-source license to inherited code or change its copyright ownership.
+No uniform MIT, Apache-2.0 or other open-source license is assigned to the
+whole Nous Translator application by this notice.
+
+Third-party components and separately downloaded models remain subject to
+their own licenses. Their license texts are retained in this directory and
+do not automatically extend to the application code, branding or icon.
+This provenance notice does not replace rights arising under applicable
+platform terms or law.
