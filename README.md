@@ -4,11 +4,11 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 选中文字，点击翻译入口，在浮窗中查看译文。默认使用本机模型，也可以分别为翻译和对话选择在线服务。
 
-[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.1.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
+[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.2.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
 
 ## 下载与安装
 
-当前版本为 **0.6.0-beta.1 预览版（build 7）**。
+当前版本为 **0.6.0-beta.2 预览版（build 8）**。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -17,7 +17,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 | 本地模型 | 首次下载约 1.3 GB，需要能够访问 Hugging Face 及其下载服务的网络。权重不包含在安装包中。 |
 | 签名 | 当前是 ad-hoc 签名预览版，尚无 Developer ID 签名，也未通过 Apple 公证。 |
 
-1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.1-macOS-arm64.dmg`。
+1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.2-macOS-arm64.dmg`。
 2. 打开 DMG，将 **Nous Translator.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”打开 Nous Translator。它在屏幕顶部菜单栏显示翻译图标，不常驻 Dock。
 
@@ -51,7 +51,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 在线识别会把缩放、重新编码后的图片发给所选服务，可能产生费用；未选择在线识别时不发送图片。识别只提取文字，不负责描述画面。**只发送图片即可返回识别文字，不需要对话模型**；同时输入问题时，识别文字会再交给选定的对话模型处理。PDF 和文本附件仍在本机提取。
 
-**Settings → General → Translation Languages** 提供 16 种语言选项和常用语言对。支持自动双向、A → B、B → A，浮窗显示本次识别出的源语言与目标。短词和混合文字可能判断不准，可选择固定方向；实际语言能力取决于所选模型。
+**Settings → General → Translation Languages** 提供 16 种语言选项和常用语言对。支持自动双向、A → B、B → A。短词和混合文字可能判断不准，可选择固定方向；实际语言能力取决于所选模型。
 
 ## 减少翻译前的等待
 

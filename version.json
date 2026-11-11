@@ -1,7 +1,7 @@
 {
   "version": "0.6.0",
-  "build": 7,
-  "release": "0.6.0-beta.1",
+  "build": 8,
+  "release": "0.6.0-beta.2",
   "channel": "preview",
   "minimum_macos": "14.0",
   "architecture": "arm64"

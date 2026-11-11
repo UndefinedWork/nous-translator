@@ -382,11 +382,6 @@ struct TranslationPanelView: View {
     private var header: some View {
         GlassGroup(spacing: 8) {
             HStack(spacing: 8) {
-                Text(session.direction.label)
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                    .help(session.direction.usedFallback ? "Other or unrecognized language: translating into your primary language (A)." : "Detected source language → translation language")
-                    .accessibilityLabel(session.direction.label)
                 Spacer(minLength: 0)
                 GlassSymbolButton(symbol: "xmark", size: 36, pointSize: 13, help: "Close", action: close)
             }
