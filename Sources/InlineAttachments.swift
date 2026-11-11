@@ -2,10 +2,73 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import ImageIO
+import PDFKit
 
 struct ComposerFile: Codable {
     var name: String
     var path: String
+
+    func extractedText(configuration: ImageRecognitionConfiguration = .load()) async throws -> String {
+        try await AttachmentTextExtractor.extract(url: URL(fileURLWithPath: path), configuration: configuration)
+    }
+}
+
+/// Documents remain local even when online image recognition is selected.
+/// All detection, file reads, decoding and OCR happen away from the main actor.
+enum AttachmentTextExtractor {
+    static func extract(url: URL, configuration: ImageRecognitionConfiguration = .load(),
+                        transport: ImageRecognition.Transport? = nil,
+                        keyReader: @escaping ImageRecognition.KeyReader = { try APIKeyStore.read($0) },
+                        cache: ImageRecognitionCache? = .shared) async throws -> String {
+        try Task.checkCancellation()
+        let image = try await ImageRecognition.worker { ImageRecognition.isImage(url: url) }
+        if image {
+            return try await ImageRecognition.recognize(url: url, configuration: configuration,
+                transport: transport, keyReader: keyReader, cache: cache)
+        }
+        // Local documents have a separate cache identity, so changing an online image
+        // provider never causes PDF/text files to be uploaded or needlessly reprocessed.
+        let fingerprint = try await ImageRecognition.worker { try ImageRecognition.fingerprint(url: url) }
+        let kind = url.pathExtension.lowercased() == "pdf" ? "pdf" : "text"
+        let key = fingerprint + ":local-document:" + kind
+        if let value = await cache?.value(for: key) { try Task.checkCancellation(); return value }
+        let extracted = try await ImageRecognition.worker {
+            let text: String
+            if kind == "pdf" {
+                guard let document = PDFDocument(url: url), !document.isLocked else {
+                    throw ModelError.message("This PDF could not be read or requires a password.")
+                }
+                var pages: [String] = [], characters = 0
+                for index in 0..<document.pageCount {
+                    try Task.checkCancellation()
+                    let page = document.page(at: index)?.string ?? ""
+                    characters += page.count
+                    guard characters <= ImageRecognition.maximumTextCharacters else {
+                        throw ModelError.message("The PDF contains too much text. Send fewer pages (up to 16000 characters).")
+                    }
+                    if !page.isEmpty { pages.append(page) }
+                }
+                text = pages.joined(separator: "\n")
+            } else {
+                text = try String(contentsOf: url, encoding: .utf8)
+            }
+            try Task.checkCancellation()
+            let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !result.isEmpty else {
+                throw ModelError.message(kind == "pdf"
+                    ? "This PDF has no readable text layer. Attach an image of the page for image recognition."
+                    : "No readable text was found in the attachment.")
+            }
+            guard result.count <= ImageRecognition.maximumTextCharacters else {
+                throw ModelError.message("The attachment contains too much text. Send it in smaller parts (up to 16000 characters).")
+            }
+            return result
+        }
+        try Task.checkCancellation()
+        if let cache { await cache.insert(extracted, for: key) }
+        try Task.checkCancellation()
+        return extracted
+    }
 }
 final class FileAttachment: NSTextAttachment {
     let file: ComposerFile
@@ -42,6 +105,8 @@ final class FileChip: NSTextAttachmentCell {
     @Published var compactWidth: CGFloat = 250 { didSet { cachedCompactHeight = nil } }
     private var cachedCompactHeight: CGFloat?
     private var filePicker: NSOpenPanel?
+    private var imageImports: [UUID: Task<Void, Never>] = [:]
+    private var importGeneration = UUID()
     @Published var error: String?
     @Published var isHovered = false
     @Published var isFocused = false
@@ -79,7 +144,11 @@ final class FileChip: NSTextAttachmentCell {
         return result.string
     }
     func setText(_ text: String) { content = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 14)]) }
-    func clear() { setText(""); editorHeight = 20; editor?.undoManager?.removeAllActions(); try? FileManager.default.removeItem(at: staging) }
+    func clear() {
+        importGeneration = UUID(); imageImports.values.forEach { $0.cancel() }; imageImports = [:]
+        setText(""); editorHeight = 20; editor?.undoManager?.removeAllActions()
+        try? FileManager.default.removeItem(at: staging)
+    }
     func chooseFiles() {
         if let filePicker { NSApp.activate(ignoringOtherApps: true); filePicker.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel()
@@ -123,14 +192,32 @@ final class FileChip: NSTextAttachmentCell {
     }
     func paste(_ board: NSPasteboard) -> Bool {
         if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { insert(urls); return true }
-        if let image = NSImage(pasteboard: board), let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Image-\(UUID().uuidString).png")
-            do { try png.write(to: url); insert([url]); try? FileManager.default.removeItem(at: url) } catch { self.error = error.localizedDescription }
+        // Preserve encoded pasteboard bytes; converting NSImage → TIFF → PNG here used
+        // to decode and re-encode the full screenshot on the editor's main thread.
+        let imageTypes = [.png, .tiff] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }
+        for type in imageTypes where board.types?.contains(type) == true {
+            guard let data = board.data(forType: type) else { continue }
+            guard data.count <= ImageRecognition.maximumInputBytes else {
+                error = "Could not attach image (maximum 50 MB)."; return true
+            }
+            let id = UUID(), generation = importGeneration
+            let suffix = UTType(type.rawValue)?.preferredFilenameExtension ?? "image"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Image-\(id)." + suffix)
+            imageImports[id] = Task { [weak self] in
+                defer { try? FileManager.default.removeItem(at: url); self?.imageImports.removeValue(forKey: id) }
+                do {
+                    try await ImageRecognition.worker { try data.write(to: url, options: .atomic) }
+                    try Task.checkCancellation()
+                    guard let self, self.importGeneration == generation else { return }
+                    self.insert([url])
+                } catch is CancellationError {
+                } catch { self?.error = error.localizedDescription }
+            }
             return true
         }
         return false
     }
-    deinit { try? FileManager.default.removeItem(at: staging) }
+    deinit { imageImports.values.forEach { $0.cancel() }; try? FileManager.default.removeItem(at: staging) }
 }
 final class AttachmentTextView: NSTextView {
     var dictationInputSurface: NSView? { draft?.hitSurface }

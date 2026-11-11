@@ -33,6 +33,7 @@ struct HistoryEntry: Identifiable, Codable { var id = UUID(); let date: Date; le
         }
         add("General", "gearshape", GeneralSettings())
         add("Models", "cpu", ModelsSettings())
+        add("Images", "text.viewfinder", Form { ImageRecognitionSettings() }.formStyle(.grouped))
         add("Permissions", "hand.raised", PermissionSettings())
         add("History", "clock", HistorySettings())
         let window = NSWindow(contentViewController: tabs)
@@ -52,24 +53,24 @@ struct HistoryEntry: Identifiable, Codable { var id = UUID(); let date: Date; le
     }
 }
 struct GeneralSettings: View {
-    @AppStorage("fastOCR") private var fastOCR = false
+    @AppStorage("keepLocalTranslationReady") private var keepReady = true
+    @AppStorage("translationResponseMode") private var responseMode = TranslationResponseMode.fast.rawValue
     var body: some View {
         Form {
+            TranslationLanguageSettings()
             Section {
-                LabeledContent("Translation direction", value: "Chinese ↔ English")
-                LabeledContent("Selection translation", value: "Select text, then click Translate")
-            } header: { Text("Translation") }
-            Section {
-                Picker("Text recognition", selection: $fastOCR) {
-                    Text("Accurate").tag(false); Text("Fast").tag(true)
+                Picker("Online translation", selection: $responseMode) {
+                    ForEach(TranslationResponseMode.allCases) { Text($0.title).tag($0.rawValue) }
                 }
-            } header: { Text("Images") } footer: {
-                Text("Image text is recognized on this Mac. Fast recognition may miss small or complex text.")
+                Toggle("Prepare local translation model", isOn: $keepReady)
+            } header: { Text("Response Time") } footer: {
+                Text("Fast reduces reasoning for supported OpenAI translation models; Model default leaves more time for difficult passages. Your selected model stays the same. Local preparation loads only the translation model and releases it after five idle minutes or when memory is low.")
             }
             Section {
-                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")
+                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "NousReleaseVersion") as? String ?? "Development")
             } header: { Text("Nous Translator") }
         }.formStyle(.grouped)
+            .onChange(of: keepReady) { _, _ in LocalModel.shared.refreshPrewarming() }
     }
 }
 struct PermissionSettings: View {
@@ -126,7 +127,7 @@ struct ModelsSettings: View {
                 HStack {
                     Spacer()
                     Button("Choose Translation Model…") { choose(conversation: false) }
-                    Button("Use Index-Translate") { modelPath = ""; LocalModel.shared.stop() }
+                    Button("Use Index-Translate") { modelPath = ""; LocalModel.shared.stop(); LocalModel.shared.prewarmIfNeeded() }
                 }
                 LabeledContent("Conversation model") { Text(conversationPath.isEmpty ? "Not selected" : URL(fileURLWithPath: conversationPath).lastPathComponent).lineLimit(1) }
                 HStack { Spacer(); Button("Choose Conversation Model…") { choose(conversation: true) } }
@@ -165,6 +166,7 @@ struct ModelsSettings: View {
         }.formStyle(.grouped)
             .onAppear { download.refreshInstalled(); localModelsExpanded = !download.installed }
             .onChange(of: provider) { _, selected in profile = APIProfile.load(selected); key = ""; status = "" }
+            .onChange(of: translation) { _, _ in LocalModel.shared.refreshPrewarming() }
     }
     @discardableResult private func save() -> Bool {
         do {
@@ -191,7 +193,7 @@ struct ModelsSettings: View {
         panel.allowedContentTypes = [UTType(filenameExtension: "gguf") ?? .data]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if conversation { conversationPath = url.path; LocalModel.conversation.stop() }
-        else { modelPath = url.path; LocalModel.shared.stop() }
+        else { modelPath = url.path; LocalModel.shared.stop(); LocalModel.shared.prewarmIfNeeded() }
     }
 }
 struct HistorySettings: View {
@@ -338,6 +340,7 @@ private final class ModelFileDownload: NSObject, URLSessionDownloadDelegate, @un
                     _ = try FileManager.default.replaceItemAt(destination, withItemAt: staged)
                 } else { try FileManager.default.moveItem(at: staged, to: destination) }
                 refreshInstalled(); progress = 1; status = "Download complete. You can translate now."
+                if destination == LocalModel.defaultModelURL { LocalModel.shared.prewarmIfNeeded() }
             } catch is CancellationError {
                 progress = nil; status = "Download cancelled. You can retry at any time."
             } catch let error as URLError where error.code == .cancelled {

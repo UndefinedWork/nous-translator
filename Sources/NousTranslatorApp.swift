@@ -25,6 +25,7 @@ import ApplicationServices
         if CommandLine.arguments.contains("--settings-preview") {
             showSettings()
             if CommandLine.arguments.contains("--models") { showModels() }
+            if CommandLine.arguments.contains("--images") { settingsController?.tabs.selectedTabViewItemIndex = 2 }
             if CommandLine.arguments.contains("--capture") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                     guard let view = self?.settingsController?.window?.contentView?.superview,
@@ -51,6 +52,7 @@ import ApplicationServices
             return
         }
         controller.start()
+        LocalModel.shared.prewarmIfNeeded()
         if CommandLine.arguments.contains("--preview") { controller.preview() }
         else if LocalModel.needsInitialModelSetup() { showModels() }
         else if !AXIsProcessTrusted() { permission() }

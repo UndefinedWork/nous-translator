@@ -8,9 +8,9 @@
 
 | 字段 | 当前值 | 用途 |
 | --- | --- | --- |
-| `version` | `0.5.0` | 应用显示版本。 |
-| `build` | `6` | 应用构建号；新构建递增。 |
-| `release` | `0.5.0-beta.1` | 产物名称及 Git 标签 `v0.5.0-beta.1`。 |
+| `version` | `0.6.0` | 应用显示版本。 |
+| `build` | `7` | 应用构建号；新构建递增。 |
+| `release` | `0.6.0-beta.1` | 产物名称及 Git 标签 `v0.6.0-beta.1`。 |
 | `channel` | `preview` | 预览版以 GitHub Pre-release 发布；稳定版使用 `stable`。 |
 | `minimum_macos` | `14.0` | 应用与运行器的最低编译目标，不等于所有版本已经实机验证。 |
 | `architecture` | `arm64` | 当前仅 Apple Silicon。 |
@@ -23,7 +23,7 @@
 
 ## 预览版发布顺序
 
-以下命令在仓库根目录执行，适用于当前 `0.5.0-beta.1`。之后的版本需同步更新说明路径。开始前已完成版本和说明的提交，工作区应保持干净。
+以下命令在仓库根目录执行，适用于当前 `0.6.0-beta.1`。之后的版本需同步更新说明路径。开始前已完成版本和说明的提交，工作区应保持干净。
 
 ```sh
 git status --porcelain
@@ -31,14 +31,14 @@ git status --porcelain
 NOUS_APP_OUTPUT='/tmp/nous-release-build/Nous Translator.app' ./scripts/build.sh
 python3 scripts/package-release.py '/tmp/nous-release-build/Nous Translator.app'
 git push origin main
-python3 scripts/publish-release.py --notes docs/releases/0.5.0-beta.1.md
+python3 scripts/publish-release.py --notes docs/releases/0.6.0-beta.1.md
 ```
 
 只有上一步成功才继续下一步。测试、构建或验收发现需要修复时，先修改并提交，再重新执行测试、构建和打包，保证源码、版本信息与安装包对应同一个干净提交。
 
 各步骤的职责：
 
-- `scripts/test.sh`：运行语言/选区规则、浏览器延迟读取、剪贴板取消与恢复、输入框、服务商请求与流式响应、设置及首次模型下载回归。模型下载测试使用本机 HTTP 服务，不真实下载权重，也不启动真实模型。
+- `scripts/test.sh`：运行语言/选区规则、浏览器延迟读取、剪贴板取消与恢复、输入框、服务商请求与流式响应、设置、首次模型下载、本地模型生命周期、图片识别和附件独立识别回归。模型下载测试使用本机 HTTP 服务，不真实下载权重，也不启动真实模型。
 - `scripts/build.sh`：读取版本信息，从 [固定提交](../scripts/runtime-version.env) 构建 macOS 14.0 arm64 静态运行器，再构建、签名并验证应用。默认使用 ad-hoc 签名；不复制构建机器上的 Homebrew 动态库。应用记录源提交和工作区状态。
 - `scripts/package-release.py`：要求源码已提交且工作区干净，检查应用中的源提交与当前提交一致，生成拖入 Applications 的 DMG、应用 ZIP、`release.json` 和 `SHA256SUMS.txt`；重新解压 ZIP、挂载 DMG 并验证其中的应用。
 - `scripts/publish-release.py --notes …`：要求远端 `main` 与本地提交完全一致，校验版本、产物清单和 SHA-256，再创建并推送版本标签。先上传到草稿 Release，确认四份附件齐全后公开；`preview` 标记为 Pre-release。
@@ -64,7 +64,7 @@ python3 scripts/package-release.py '/tmp/nous-release-build/Nous Translator.app'
 
 先确认 notarytool 返回 **Accepted** 并检查公证日志，再执行 stapler 和后续命令。上面的公证 ZIP 只用于提交给 Apple；最终下载包由打包脚本从已附加公证票据的应用重新生成。不能用 `--build-only` 代替最终公证验证。公证通过后若重新构建或修改应用，应重新签名、公证和打包。流程依据 [Apple 公证文档](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
 
-打包完成后再推送对应 `main`，并使用新版本的 `--notes` 文件发布。当前 `0.5.0-beta.1` 尚未完成 Developer ID 签名或 Apple 公证，不能标为已公证稳定版。
+打包完成后再推送对应 `main`，并使用新版本的 `--notes` 文件发布。当前 `0.6.0-beta.1` 尚未完成 Developer ID 签名或 Apple 公证，不能标为已公证稳定版。
 
 ## 安装验收与真实模型检查
 

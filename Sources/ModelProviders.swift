@@ -11,6 +11,26 @@ import CryptoKit
     var baseURL: String { switch self { case .openai: return "https://api.openai.com/v1"; case .deepseek: return "https://api.deepseek.com"; default: return "" } }
 }
 enum ModelPurpose: String { case translation, conversation }
+enum TranslationResponseMode: String, CaseIterable, Identifiable {
+    case fast, modelDefault
+    var id: String { rawValue }
+    var title: String { self == .fast ? "Fast" : "Model default" }
+    static func load(defaults: UserDefaults = .standard) -> Self {
+        Self(rawValue: defaults.string(forKey: "translationResponseMode") ?? "") ?? .fast
+    }
+    func reasoningEffort(provider: ModelProvider, model: String) -> String? {
+        guard self == .fast, provider == .openai else { return nil }
+        // Only send overrides to documented model families. Unknown/custom models retain
+        // their provider defaults. Preserve the user's model and paid service tier.
+        let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        func matches(_ name: String) -> Bool {
+            model == name || model.range(of: "^" + NSRegularExpression.escapedPattern(for: name) + "-\\d{4}-\\d{2}-\\d{2}$", options: .regularExpression) != nil
+        }
+        if ["gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna"].contains(where: matches) { return "none" }
+        if ["gpt-6-astra", "gpt-6.1-sol"].contains(where: matches) { return "low" }
+        return nil
+    }
+}
 struct APIProfile: Equatable {
     let provider: ModelProvider
     var baseURL: String
@@ -34,7 +54,18 @@ struct APIProfile: Equatable {
         parts.path = path
         guard let url = parts.url else { throw ModelError.message("Invalid API URL.") }; return url
     }
-    func request(messages: [[String: String]], key: String) throws -> URLRequest {
+    func request(messages: [[String: String]], key: String, purpose: ModelPurpose? = nil,
+                 responseMode: TranslationResponseMode = .load()) throws -> URLRequest {
+        try makeRequest(messages: messages.map { $0.mapValues { $0 as Any } }, key: key,
+                        reasoningEffort: purpose == .translation ? responseMode.reasoningEffort(provider: provider, model: model) : nil)
+    }
+    func multimodalRequest(messages: [[String: Any]], key: String) throws -> URLRequest {
+        guard provider == .openai || provider == .custom else {
+            throw ModelError.message("Choose OpenAI or a Custom API with an image-capable model in Settings → Models.")
+        }
+        return try makeRequest(messages: messages, key: key, reasoningEffort: nil)
+    }
+    private func makeRequest(messages: [[String: Any]], key: String, reasoningEffort: String?) throws -> URLRequest {
         guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ModelError.message("Enter a model ID in Settings → Models.") }
         guard !key.isEmpty else { throw ModelError.message("Save an API key in Settings → Models.") }
         var request = URLRequest(url: try endpoint(), timeoutInterval: 180)
@@ -44,6 +75,7 @@ struct APIProfile: Equatable {
         var body: [String: Any] = ["model": model, "messages": messages, "stream": true]
         if provider == .deepseek { body["thinking"] = ["type": "disabled"]; body["max_tokens"] = 4096 }
         else if provider == .openai { body["max_completion_tokens"] = 4096; body["store"] = false }
+        if let reasoningEffort { body["reasoning_effort"] = reasoningEffort }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
@@ -94,26 +126,34 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     }
     private static let delegate = NoRedirects()
     private static let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
-    static func stream(messages: [[String: String]], purpose: ModelPurpose) async throws -> URLSession.AsyncBytes {
+    static func stream(messages: [[String: String]], purpose: ModelPurpose,
+                       progress: ((LocalModel.Progress) -> Void)? = nil) async throws -> URLSession.AsyncBytes {
         try validate(purpose)
         let provider = provider(for: purpose)
-        if provider == .local { return try await (purpose == .translation ? LocalModel.shared : LocalModel.conversation).stream(messages: messages) }
+        if provider == .local { return try await (purpose == .translation ? LocalModel.shared : LocalModel.conversation).stream(messages: messages, progress: progress) }
         let profile = APIProfile.load(provider)
-        return try await remoteStream(profile: profile, messages: messages)
+        progress?(.waitingForFirstToken)
+        return try await remoteStream(profile: profile, messages: messages, purpose: purpose)
     }
-    static func remoteStream(profile: APIProfile, messages: [[String: String]]) async throws -> URLSession.AsyncBytes {
-        let request = try profile.request(messages: messages, key: APIKeyStore.read(profile.account))
+    static func remoteStream(profile: APIProfile, messages: [[String: String]], purpose: ModelPurpose? = nil) async throws -> URLSession.AsyncBytes {
+        let request = try profile.request(messages: messages, key: APIKeyStore.read(profile.account), purpose: purpose)
+        return try await remoteStream(request: request, provider: profile.provider)
+    }
+    static func remoteStream(request: URLRequest, provider: ModelProvider) async throws -> URLSession.AsyncBytes {
+        try Task.checkCancellation()
         let (bytes, response) = try await session.bytes(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else {
+            bytes.task.cancel()
             let detail: String
             switch code { case 401,403: detail = "Check the API key and model access."; case 429: detail = "Rate limit or quota exceeded."; case 400,404,422: detail = "Check the base URL and model ID."; default: detail = "Please try again." }
-            throw ModelError.message("\(profile.provider.title) returned HTTP \(code). \(detail)")
+            throw ModelError.message("\(provider.title) returned HTTP \(code). \(detail)")
         }
         return bytes
     }
 }
 struct CompletionAccumulator {
+    var rejectRefusal = false
     var text = ""
     var finished = false
     mutating func receive(_ line: String) throws {
@@ -124,6 +164,10 @@ struct CompletionAccumulator {
         if json["error"] != nil { throw ModelError.message("The model returned a streaming error. Please try again.") }
         guard let choice = (json["choices"] as? [[String: Any]])?.first else { return }
         if let delta = choice["delta"] as? [String: Any] {
+            if rejectRefusal, let refusal = delta["refusal"] as? String,
+               !refusal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ModelError.message("The model declined this image recognition request. Try another image or recognition model.")
+            }
             text += delta["content"] as? String ?? delta["refusal"] as? String ?? ""
         }
         if let reason = choice["finish_reason"] as? String {
@@ -139,8 +183,9 @@ struct CompletionAccumulator {
     }
 }
 @MainActor enum CompletionReader {
-    static func read(_ bytes: URLSession.AsyncBytes, update: (String) -> Void) async throws -> String {
-        var accumulator = CompletionAccumulator(); var paint = Date.distantPast
+    static func read(_ bytes: URLSession.AsyncBytes, rejectRefusal: Bool = false, update: (String) -> Void) async throws -> String {
+        defer { bytes.task.cancel() }
+        var accumulator = CompletionAccumulator(rejectRefusal: rejectRefusal); var paint = Date.distantPast
         for try await line in bytes.lines {
             try Task.checkCancellation(); try accumulator.receive(line)
             if Date().timeIntervalSince(paint) >= 0.05 { update(accumulator.text); paint = Date() }

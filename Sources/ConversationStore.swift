@@ -1,6 +1,4 @@
 import SwiftUI
-import PDFKit
-import Vision
 
 struct ChatMessage: Identifiable { let id = UUID(); let role: String; var text: String; var pending = false; var files: [ComposerFile] = []; var modelText: String? = nil }
 struct Todo: Identifiable {
@@ -16,6 +14,21 @@ struct Todo: Identifiable {
     var selected: UUID?
     var completed = false
     private var work: [UUID: Task<Void, Never>] = [:]
+    private let attachmentDirectory: URL
+    private let imageConfiguration: () -> ImageRecognitionConfiguration
+    private let extractAttachment: (ComposerFile, ImageRecognitionConfiguration) async throws -> String
+    private let validateConversation: () throws -> Void
+    init(attachmentDirectory: URL? = nil,
+         imageConfiguration: @escaping () -> ImageRecognitionConfiguration = { .load() },
+         extractAttachment: @escaping (ComposerFile, ImageRecognitionConfiguration) async throws -> String = { file, configuration in
+             try await file.extractedText(configuration: configuration)
+         },
+         validateConversation: (() throws -> Void)? = nil) {
+        self.attachmentDirectory = attachmentDirectory ?? LocalModel.directory.appendingPathComponent("Attachments")
+        self.imageConfiguration = imageConfiguration
+        self.extractAttachment = extractAttachment
+        self.validateConversation = validateConversation ?? { try ModelRouter.validate(.conversation) }
+    }
     func add(_ text: String, files: [ComposerFile], context: (String) -> String) -> UUID? {
         let id = UUID()
         tasks.append(Todo(id: id, context: context("")))
@@ -25,56 +38,71 @@ struct Todo: Identifiable {
         guard let index = tasks.firstIndex(where: { $0.id == id }), tasks[index].status != "running" else { return false }
         var saved: [ComposerFile] = []
         do {
-            let folder = LocalModel.directory.appendingPathComponent("Attachments/" + UUID().uuidString)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            for file in files {
-                let destination = folder.appendingPathComponent(UUID().uuidString + "-" + file.name)
-                try FileManager.default.copyItem(atPath: file.path, toPath: destination.path)
-                saved.append(ComposerFile(name: file.name, path: destination.path))
+            if !files.isEmpty {
+                let folder = attachmentDirectory.appendingPathComponent(UUID().uuidString)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                for file in files {
+                    let destination = folder.appendingPathComponent(UUID().uuidString + "-" + file.name)
+                    try FileManager.default.copyItem(atPath: file.path, toPath: destination.path)
+                    saved.append(ComposerFile(name: file.name, path: destination.path))
+                }
             }
         } catch { tasks[index].status = "error"; tasks[index].summary = error.localizedDescription; return false }
         let visibleText = files.reduce(text) { $0.replacingOccurrences(of: "[Attachment: \($1.name)]", with: "") }.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recognitionOnly = visibleText.isEmpty && !saved.isEmpty
+        let imageConfiguration = imageConfiguration()
         tasks[index].messages.append(ChatMessage(role: "user", text: visibleText, files: saved))
-        tasks[index].status = "running"; tasks[index].summary = saved.isEmpty ? "Preparing…" : "Reading image…"
+        tasks[index].status = "running"; tasks[index].summary = saved.isEmpty ? "Waiting for model…" : "Reading attachments…"
         let reply = ChatMessage(role: "assistant", text: "", pending: true)
         tasks[index].messages.append(reply)
         work[id] = Task {
             do {
-                try ModelRouter.validate(.conversation)
-                let input = try await Task.detached(priority: .userInitiated) {
-                    var input = text
-                    let files = saved
-            for file in files {
-                let url = URL(fileURLWithPath: file.path)
-                let extracted: String
-                if url.pathExtension.lowercased() == "pdf" {
-                    extracted = PDFDocument(url: url)?.string ?? ""
-                } else if let image = NSImage(contentsOf: url), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                    let request = VNRecognizeTextRequest(); request.recognitionLevel = UserDefaults.standard.bool(forKey: "fastOCR") ? .fast : .accurate
-                    request.recognitionLanguages = ["zh-Hans", "en-US"]
-                    try VNImageRequestHandler(cgImage: cg).perform([request])
-                    extracted = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n") ?? ""
-                } else { extracted = try String(contentsOf: url, encoding: .utf8) }
-                guard !extracted.isEmpty else { throw ModelError.message("无法读取附件文字：\(file.name)") }
-                input += "\n\n附件 \(file.name)：\n" + extracted
-            }
-            guard input.count <= 16000 else { throw ModelError.message("内容过长，请分段发送（最多 16000 字）。") }
-
-                    return input
-                }.value
+                // A file sent on its own is an explicit recognition request, and does not
+                // require a second conversation model or another paid request.
+                if !recognitionOnly { try validateConversation() }
+                var input = visibleText
+                var recognized: [String] = []
+                for file in saved {
+                    try Task.checkCancellation()
+                    tasks[index].summary = "Reading " + file.name + "…"
+                    let extracted = try await extractAttachment(file, imageConfiguration)
+                    try Task.checkCancellation()
+                    guard !extracted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        throw ModelError.message("无法读取附件文字：\(file.name)")
+                    }
+                    recognized.append(saved.count == 1 ? extracted : file.name + "\n" + extracted)
+                    input += "\n\n附件 \(file.name)：\n" + extracted
+                    guard input.count <= 16000 else { throw ModelError.message("内容过长，请分段发送（最多 16000 字）。") }
+                }
+                guard input.count <= 16000 else { throw ModelError.message("内容过长，请分段发送（最多 16000 字）。") }
                 try Task.checkCancellation()
                 tasks[index].messages[tasks[index].messages.count - 2].modelText = input
-                tasks[index].summary = "Preparing…"
-                let messages = ConversationPrompt.messages(context: tasks[index].context, history: tasks[index].messages)
-                let bytes = try await ModelRouter.stream(messages: messages, purpose: .conversation)
-                let result = try await CompletionReader.read(bytes) { streams[id] = $0 }
+                let result: String
+                if recognitionOnly { result = recognized.joined(separator: "\n\n") }
+                else {
+                    tasks[index].summary = "Waiting for model…"
+                    let messages = ConversationPrompt.messages(context: tasks[index].context, history: tasks[index].messages)
+                    let bytes = try await ModelRouter.stream(messages: messages, purpose: .conversation) { phase in
+                        guard !Task.isCancelled, let i = self.tasks.firstIndex(where: { $0.id == id }) else { return }
+                        self.tasks[i].summary = phase == .loadingModel ? "Loading local model…" : "Waiting for model…"
+                    }
+                    result = try await CompletionReader.read(bytes) { streams[id] = $0 }
+                }
+                try Task.checkCancellation()
                 if let i = tasks.firstIndex(where: { $0.id == id }), let r = tasks[i].messages.firstIndex(where: { $0.id == reply.id }) {
                     tasks[i].messages[r].text = result; tasks[i].messages[r].pending = false
                     tasks[i].status = "completed"
                 }
+            } catch is CancellationError {
+                if let i = tasks.firstIndex(where: { $0.id == id }) {
+                    tasks[i].status = "cancelled"; tasks[i].summary = "Cancelled"
+                    if let r = tasks[i].messages.firstIndex(where: { $0.id == reply.id }) { tasks[i].messages[r].pending = false }
+                }
             } catch {
                 if let i = tasks.firstIndex(where: { $0.id == id }) {
-                    tasks[i].status = "error"; tasks[i].summary = error.localizedDescription
+                    let cancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
+                    tasks[i].status = cancelled ? "cancelled" : "error"
+                    tasks[i].summary = cancelled ? "Cancelled" : error.localizedDescription
                     if let r = tasks[i].messages.firstIndex(where: { $0.id == reply.id }) {
                         tasks[i].messages[r].text = streams[id] ?? ""; tasks[i].messages[r].pending = false
                     }

@@ -165,7 +165,7 @@ import SwiftUI
         let visible = screen.visibleFrame
         let selection = CGRect(x: visible.midX - 420, y: visible.maxY - 160, width: 300, height: 40)
         showButton(text: "", app: "", selection: selection)
-        let session = TranslationSession(source: "出现翻译的小 icon+文字入口，点击后，把划词文案传过去，翻译成英文（如果是中文翻译成英文）、或者中文（如果是英文翻译成中文）")
+        let session = TranslationSession(source: "出现翻译的小 icon+文字入口，点击后，把划词文案传过去，翻译成英文（如果是中文翻译成英文）、或者中文（如果是英文翻译成中文）", configuration: .default)
         session.translation = "A small icon-plus-text entry point appears. When tapped, the selected text is passed over and translated into English if the source is Chinese, or into Chinese if the source is English."
         session.finished = true
         let window = TranslationPanel(session: session, store: store, origin: CGPoint(x: visible.midX, y: visible.maxY - 140 - SelectionTranslationLayout.panelSize.height))
@@ -233,31 +233,40 @@ struct TranslateButton: View {
 /// Streams the translation and keeps the follow-up task linked to it.
 @MainActor final class TranslationSession: ObservableObject {
     let source: String
-    let target: TranslationTarget
+    let direction: ResolvedTranslationDirection
+    var target: TranslationTarget { direction.target }
     /// The app the text was selected in; a hint about genre and register.
     private let app: String
     @Published var translation = ""
     @Published var failure: String?
     @Published var finished = false
+    @Published var preparationMessage = "Preparing translation…"
     @Published var taskID: UUID?
     private var work: Task<Void, Never>?
     private var generation = UUID()
 
-    init(source: String, app: String = "") {
+    init(source: String, app: String = "", configuration: TranslationLanguageConfiguration = .load()) {
         self.source = source; self.app = app
-        target = TranslationTarget.detect(source)
+        direction = configuration.direction(for: source)
     }
 
     func start() {
-        work?.cancel(); translation = ""; failure = nil; finished = false
+        work?.cancel(); translation = ""; failure = nil; finished = false; preparationMessage = "Preparing translation…"
         let token = UUID(); generation = token
         work = Task { [weak self] in await self?.run(token: token) }
     }
-    func cancel() { work?.cancel(); work = nil }
+    func cancel() { generation = UUID(); work?.cancel(); work = nil }
 
     private func run(token: UUID) async {
         do {
-            let bytes = try await ModelRouter.stream(messages: [["role": "user", "content": "请将以下文本翻译为\(target == .english ? "英语" : "简体中文")，直接输出翻译结果，不要进行任何解释。\n\n\(source)"]], purpose: .translation)
+            let bytes = try await ModelRouter.stream(messages: direction.messages(text: source), purpose: .translation,
+                progress: { [weak self] progress in
+                    guard let self, self.generation == token, !Task.isCancelled else { return }
+                    switch progress {
+                    case .loadingModel: self.preparationMessage = "Loading local model…"
+                    case .waitingForFirstToken: self.preparationMessage = "Waiting for model…"
+                    }
+                })
             let raw = try await CompletionReader.read(bytes) { value in
                 guard generation == token else { return }
                 translation = TranslationTarget.cleanOutput(value)
@@ -373,6 +382,11 @@ struct TranslationPanelView: View {
     private var header: some View {
         GlassGroup(spacing: 8) {
             HStack(spacing: 8) {
+                Text(session.direction.label)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .help(session.direction.usedFallback ? "Other or unrecognized language: translating into your primary language (A)." : "Detected source language → translation language")
+                    .accessibilityLabel(session.direction.label)
                 Spacer(minLength: 0)
                 GlassSymbolButton(symbol: "xmark", size: 36, pointSize: 13, help: "Close", action: close)
             }
@@ -409,7 +423,7 @@ struct TranslationPanelView: View {
         } else if session.translation.isEmpty {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Translating…").font(.system(size: 14)).tracking(-0.56).foregroundStyle(.white.opacity(0.5))
+                Text(session.preparationMessage).font(.system(size: 14)).tracking(-0.56).foregroundStyle(.white.opacity(0.5))
             }.padding(.horizontal, 12).padding(.vertical, 10)
         } else {
             TranslationResult(text: session.translation, finished: session.finished)

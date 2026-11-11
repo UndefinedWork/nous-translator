@@ -4,11 +4,11 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 选中文字，点击翻译入口，在浮窗中查看译文。默认使用本机模型，也可以分别为翻译和对话选择在线服务。
 
-[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.5.0-beta.1.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
+[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.1.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
 
 ## 下载与安装
 
-当前版本为 **0.5.0-beta.1 预览版（build 6）**。
+当前版本为 **0.6.0-beta.1 预览版（build 7）**。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -17,7 +17,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 | 本地模型 | 首次下载约 1.3 GB，需要能够访问 Hugging Face 及其下载服务的网络。权重不包含在安装包中。 |
 | 签名 | 当前是 ad-hoc 签名预览版，尚无 Developer ID 签名，也未通过 Apple 公证。 |
 
-1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.5.0-beta.1-macOS-arm64.dmg`。
+1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.1-macOS-arm64.dmg`。
 2. 打开 DMG，将 **Nous Translator.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”打开 Nous Translator。它在屏幕顶部菜单栏显示翻译图标，不常驻 Dock。
 
@@ -29,7 +29,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 1. 在 **On This Mac** 点击 **Download**，下载 Index-Translate-2B Q4_K_M。可查看进度、取消和重试；下载完成后可离线翻译。也可以选择已有的兼容 GGUF 文件。
 2. 打开 **Settings → Permissions**，前往系统的 **隐私与安全性 → 辅助功能**，由你打开 Nous Translator 的允许开关。应用不能替你授予权限。
-3. 在支持的应用中选中文字，点击出现的翻译入口。中文默认译为英文，其他语言默认译为中文。
+3. 在支持的应用中选中文字，点击出现的翻译入口。默认语言对为简体中文 ↔ English；可在 General 中更换语言对、使用自动双向识别，或固定翻译方向。自动模式遇到第三种或无法识别的语言时，译向你选择的主语言 A。
 
 也可以先复制文字，再从菜单栏选择 **Translate Clipboard**；剪贴板翻译不需要辅助功能权限。
 
@@ -42,7 +42,24 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 - **通用对话**：需要单独配置通用模型，可以使用另一个本地 GGUF 或在线服务；专用翻译模型不会自动承担普通对话。
 - **连接测试**：Test Connection 会向当前服务发送简短请求，可能产生费用。仅当选择在线服务时，相应文字及必要上下文才发送给该服务；本地失败不会自动切换到云端。
 
-附件支持文本、含文字的 PDF，以及通过 macOS Vision 在本机识别的图片文字。翻译历史保存在本机，最多 500 条，可在 Settings → History 清除。完整的数据处理、附件保留和删除说明见 [隐私说明](PRIVACY.md)。
+## 图片识别与语言
+
+**Settings → Images** 独立选择图片文字识别方式：
+
+- **Apple Vision · On This Mac**：默认选项，在本机识别文字，无需 Key；可选 Accurate / Fast。
+- **OpenAI / Custom API**：填写支持图片输入的模型 ID、服务地址和自己的 Key，再点击 Save Image Recognition。图片模型与翻译、对话模型分别保存；同一提供方和地址可复用已保存的 Key。
+
+在线识别会把缩放、重新编码后的图片发给所选服务，可能产生费用；未选择在线识别时不发送图片。识别只提取文字，不负责描述画面。**只发送图片即可返回识别文字，不需要对话模型**；同时输入问题时，识别文字会再交给选定的对话模型处理。PDF 和文本附件仍在本机提取。
+
+**Settings → General → Translation Languages** 提供 16 种语言选项和常用语言对。支持自动双向、A → B、B → A，浮窗显示本次识别出的源语言与目标。短词和混合文字可能判断不准，可选择固定方向；实际语言能力取决于所选模型。
+
+## 减少翻译前的等待
+
+General 中的 **Online translation → Fast** 默认对已确认支持的 OpenAI 模型降低翻译请求的推理强度，保留你选择的模型，对话设置不变。可选 Model default 恢复服务默认行为；不自动购买优先处理档位。未知模型和自定义服务保持兼容参数。
+
+**Prepare local translation model** 会提前加载已有的本地翻译模型，不预先发送翻译内容；模型闲置五分钟或遇到内存压力时释放。可关闭该选项以减少后台内存占用。等待界面会区分模型加载和等待输出，收到文字后立即流式显示。实际速度仍受模型、机器和网络影响。
+
+翻译历史保存在本机，最多 500 条，可在 Settings → History 清除。完整的数据处理、附件保留和删除说明见 [隐私说明](PRIVACY.md)。
 
 ## 当前边界
 
