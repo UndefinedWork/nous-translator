@@ -46,7 +46,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 **Settings → Images** 独立选择图片文字识别方式：
 
-- **Apple Vision · On This Mac**：默认选项，在本机识别文字，无需 Key；可选 Accurate / Fast。
+- **Apple Vision · On This Mac**：默认选项，在本机识别文字，无需 Key；可选 Accurate / Fast。首次或系统缓存未命中时，macOS 准备识别模型可能需要约 20 秒或更久；处理在后台进行，后续通常会更快。
 - **OpenAI / Custom API**：填写支持图片输入的模型 ID、服务地址和自己的 Key，再点击 Save Image Recognition。图片模型与翻译、对话模型分别保存；同一提供方和地址可复用已保存的 Key。
 
 在线识别会把缩放、重新编码后的图片发给所选服务，可能产生费用；未选择在线识别时不发送图片。识别只提取文字，不负责描述画面。**只发送图片即可返回识别文字，不需要对话模型**；同时输入问题时，识别文字会再交给选定的对话模型处理。PDF 和文本附件仍在本机提取。

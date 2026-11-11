@@ -71,7 +71,8 @@ private actor RecognitionGate {
         defer { store.stop() }
         func file(_ url: URL) -> ComposerFile { ComposerFile(name: url.lastPathComponent, path: url.path) }
         func wait(_ label: String, until predicate: () -> Bool) async throws {
-            for _ in 0..<1000 {
+            // Apple Vision may spend about 20 seconds compiling for the Neural Engine on a cold cache.
+            for _ in 0..<3000 {
                 if predicate() { return }
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
