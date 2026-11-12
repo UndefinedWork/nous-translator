@@ -19,18 +19,32 @@ def verify(app, require_notarized=False, build_only=False):
     app = Path(app).resolve()
     version = json.loads((ROOT / 'version.json').read_text())
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+    distribution = info.get('NousDistribution', 'direct')
+    if distribution not in ('direct', 'appstore'):
+        raise SystemExit(f'Unknown NousDistribution: {distribution!r}')
     expected = {'CFBundleIdentifier': 'com.nous.translator',
                 'CFBundleShortVersionString': version['version'],
                 'CFBundleVersion': str(version['build']),
                 'LSMinimumSystemVersion': version['minimum_macos'],
                 'NousReleaseVersion': version['release'],
-                'NousReleaseChannel': version['channel']}
+                'NousReleaseChannel': version['channel'],
+                'NousDistribution': distribution}
     for key, value in expected.items():
         if info.get(key) != value:
             raise SystemExit(f'{key}: expected {value!r}, found {info.get(key)!r}')
-    required = ['Contents/MacOS/NousTranslator', 'Contents/Resources/Runtime/llama-server',
+    helper = 'Contents/MacOS/llama-server' if distribution == 'appstore' else 'Contents/Resources/Runtime/llama-server'
+    required = ['Contents/MacOS/NousTranslator', helper, 'Contents/Resources/Runtime/runtime-version.env',
                 'Contents/Resources/AppIcon.icns', 'Contents/Resources/PRIVACY.md',
-                'Contents/Resources/SOURCE_NOTICE.md', 'Contents/Resources/THIRD_PARTY_NOTICES.md']
+                'Contents/Resources/SOURCE_NOTICE.md', 'Contents/Resources/THIRD_PARTY_NOTICES.md',
+                'Contents/Resources/PrivacyInfo.xcprivacy']
+    if distribution == 'appstore':
+        services = info.get('NSServices') or []
+        if not services or services[0].get('NSMessage') != 'translateService':
+            raise SystemExit('App Store builds must declare the Translate with Nous Translator service')
+        if (app / 'Contents/Resources/Runtime/llama-server').exists():
+            raise SystemExit('App Store builds must not also ship llama-server under Resources')
+        if 'https://' in str(info.get('NSHumanReadableCopyright', '')).lower():
+            raise SystemExit('Do not place an unverified URL in NSHumanReadableCopyright')
     for item in required:
         if not (app / item).is_file():
             raise SystemExit(f'Missing bundle resource: {item}')
@@ -74,14 +88,28 @@ def verify(app, require_notarized=False, build_only=False):
             raise SystemExit(f'Unbundled/non-system dependency in {item.name}: {dependency}')
     if len(executables) != 2:
         raise SystemExit(f'Expected exactly the application and static runtime, found {len(executables)} Mach-O files')
-    if require_notarized or version['channel'] == 'stable':
+    if distribution == 'appstore':
+        helper_id = run('codesign', '-dv', '--verbose=4', app / 'Contents/MacOS/llama-server')
+        if 'Identifier=com.nous.translator.llama-server' not in helper_id:
+            raise SystemExit('App Store helper must be signed as com.nous.translator.llama-server')
+        signature = run('codesign', '-d', '--entitlements', ':-', app)
+        for key in ('com.apple.security.app-sandbox', 'com.apple.security.network.client',
+                    'com.apple.security.network.server', 'com.apple.security.files.user-selected.read-only'):
+            if key not in signature:
+                raise SystemExit(f'App Store build is missing {key}')
+        helper_sig = run('codesign', '-d', '--entitlements', ':-', app / 'Contents/MacOS/llama-server')
+        if 'com.apple.security.app-sandbox' not in helper_sig or 'com.apple.security.inherit' not in helper_sig:
+            raise SystemExit('App Store helper must inherit the app sandbox')
+        if 'com.apple.security.files.user-selected' in helper_sig:
+            raise SystemExit('Inherited helper must not declare its own file-access entitlements')
+    elif distribution != 'appstore' and (require_notarized or version['channel'] == 'stable'):
         signature = run('codesign', '-dv', '--verbose=4', app)
         if 'Authority=Developer ID Application:' not in signature:
             raise SystemExit('Stable releases require a Developer ID Application signature')
         if require_notarized or not build_only:
             run('xcrun', 'stapler', 'validate', app)
             run('spctl', '--assess', '--type', 'execute', '--verbose=2', app)
-    print(f"Verified {version['release']}: {len(executables)} arm64 executables, macOS {version['minimum_macos']} target, valid bundle signatures and notices")
+    print(f"Verified {version['release']} ({distribution}): {len(executables)} arm64 executables, macOS {version['minimum_macos']} target, valid bundle signatures and notices")
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 import AppKit
+#if !NOUS_APP_STORE
 import ApplicationServices
-import ScreenCaptureKit
+#endif
 import SwiftUI
 
 /// Shows the Translate button above any text selected with the mouse, and the translation panel.
@@ -23,6 +24,9 @@ import SwiftUI
     init(store: TaskStore) { self.store = store }
 
     func start() {
+        #if NOUS_APP_STORE
+        return
+        #else
         guard monitors.isEmpty else { return }
         monitoringTrusted = AXIsProcessTrusted()
         let handlers: [(NSEvent.EventTypeMask, (NSEvent) -> Void)] = [
@@ -80,13 +84,16 @@ import SwiftUI
                 self.removeMonitors(); self.start()
             }
         }
+        #endif
     }
 
+    #if !NOUS_APP_STORE
     private static func prepareFrontmostApplication() {
         guard AXIsProcessTrusted(), let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               pid != ProcessInfo.processInfo.processIdentifier else { return }
         Task { await SelectionAccessibilityReader.shared.prepare(pid: pid) }
     }
+    #endif
 
     /// Global monitor events carry no window, so their location is already in screen coordinates.
     private static func screenLocation(_ event: NSEvent) -> CGPoint {
@@ -112,6 +119,7 @@ import SwiftUI
         awaitingUp = false; invalidateCapture(); hideButton()
     }
 
+    #if !NOUS_APP_STORE
     private func mouseUp(_ event: NSEvent) {
         guard awaitingUp else { return }
         awaitingUp = false
@@ -141,6 +149,7 @@ import SwiftUI
             self?.showButton(text: result.text, app: app.localizedName ?? "", selection: result.rect)
         }
     }
+    #endif
 
     private func showButton(text: String, app: String, selection: CGRect) {
         hideButton()

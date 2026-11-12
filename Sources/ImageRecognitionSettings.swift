@@ -54,7 +54,7 @@ struct ImageRecognitionSettings: View {
             if configuration.provider == .local {
                 Text("Apple Vision reads image text on this Mac without an API key or model download. The first recognition can take longer while macOS prepares its model. Send only an image to extract its text, or add a question to continue with your conversation model.")
             } else {
-                Text("Online recognition sends a resized image to this provider and may incur API charges. Send an image by itself to extract its text; add a question to continue with your conversation model. PDF and text attachments are read on this Mac. Images are never sent to another provider as an automatic fallback.")
+                Text("Online recognition sends a resized image to this provider and may incur API charges. The first request to a new host asks for confirmation in the same way as online translation. Send an image by itself to extract its text; add a question to continue with your conversation model. PDF and text attachments are read on this Mac. Images are never sent to another provider as an automatic fallback.")
             }
         }
         .onAppear { configuration = .load() }

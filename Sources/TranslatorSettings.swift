@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
+#if !NOUS_APP_STORE
 import ApplicationServices
+#endif
 import UniformTypeIdentifiers
 struct HistoryEntry: Identifiable, Codable { var id = UUID(); let date: Date; let source: String; let result: String }
 @MainActor final class TranslationHistory: ObservableObject {
@@ -35,6 +37,7 @@ struct HistoryEntry: Identifiable, Codable { var id = UUID(); let date: Date; le
         add("Models", "cpu", ModelsSettings())
         add("Images", "text.viewfinder", Form { ImageRecognitionSettings() }.formStyle(.grouped))
         add("Permissions", "hand.raised", PermissionSettings())
+        add("Privacy", "hand.raised.fill", PrivacySettings())
         add("History", "clock", HistorySettings())
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
@@ -68,15 +71,27 @@ struct GeneralSettings: View {
             }
             Section {
                 LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "NousReleaseVersion") as? String ?? "Development")
+                LabeledContent("Distribution", value: AppDistribution.usesAccessibilitySelection ? "Direct" : "Mac App Store")
             } header: { Text("Nous Translator") }
         }.formStyle(.grouped)
             .onChange(of: keepReady) { _, _ in LocalModel.shared.refreshPrewarming() }
     }
 }
 struct PermissionSettings: View {
+    #if !NOUS_APP_STORE
     @State private var trusted = AXIsProcessTrusted()
+    #endif
     var body: some View {
         Form {
+            #if NOUS_APP_STORE
+            Section {
+                LabeledContent("Clipboard") { Text("Menu → Translate Clipboard") }
+                LabeledContent("Paste") { Text("Menu → Translate Pasted Text…") }
+                LabeledContent("Services") { Text("Translate with Nous Translator") }
+            } header: { Text("How to Translate") } footer: {
+                Text("This Mac App Store build does not read selected text from other apps. Copy text, paste it here, or use the Services menu. Enable the service in System Settings → Keyboard → Keyboard Shortcuts → Services if it is hidden.")
+            }
+            #else
             Section {
                 LabeledContent("Accessibility") {
                     Label(trusted ? "Allowed" : "Not Allowed", systemImage: trusted ? "checkmark.circle.fill" : "circle")
@@ -92,9 +107,58 @@ struct PermissionSettings: View {
             } header: { Text("Selection Translation") } footer: {
                 Text("Allow Nous Translator to read selected text in other apps. Clipboard translation does not require Accessibility access.")
             }
+            #endif
         }.formStyle(.grouped)
+        #if !NOUS_APP_STORE
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in trusted = AXIsProcessTrusted() }
+        #endif
     }
+}
+
+struct PrivacySettings: View {
+    @State private var hosts: [String] = CloudAIConsent.allowedHosts()
+    var body: some View {
+        Form {
+            Section {
+                Text(bundledMarkdown("PRIVACY"))
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+            } header: { Text("Privacy Notice") } footer: {
+                Text("This text is the PRIVACY.md file shipped in the app. App Store Connect also requires a public URL at submission; that URL is not stored in this repository.")
+            }
+            Section {
+                if hosts.isEmpty {
+                    Text("No online model hosts are allowed yet.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(hosts, id: \.self) { host in
+                        HStack {
+                            Text(host)
+                            Spacer()
+                            Button("Revoke") {
+                                CloudAIConsent.revoke(host)
+                                hosts = CloudAIConsent.allowedHosts()
+                            }
+                        }
+                    }
+                }
+                Button("Revoke All Online Model Hosts", role: .destructive) {
+                    CloudAIConsent.revokeAll()
+                    hosts = CloudAIConsent.allowedHosts()
+                }.disabled(hosts.isEmpty)
+            } header: { Text("Online Model Consent") } footer: {
+                Text("Before sending text or images to OpenAI, DeepSeek, or a Custom API host, the app asks once per host. Local models, Apple Vision, and localhost Custom API endpoints do not use this list.")
+            }
+        }.formStyle(.grouped)
+            .onAppear { hosts = CloudAIConsent.allowedHosts() }
+    }
+}
+
+private func bundledMarkdown(_ name: String) -> String {
+    if let url = Bundle.main.url(forResource: name, withExtension: "md"),
+       let text = try? String(contentsOf: url, encoding: .utf8), !text.isEmpty {
+        return text
+    }
+    return "PRIVACY.md ships in release builds of this app and is also in the source repository."
 }
 struct ModelsSettings: View {
     @AppStorage("translationProvider") private var translation = ModelProvider.local.rawValue
@@ -112,7 +176,7 @@ struct ModelsSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("Selection translation", selection: $translation) {
+                Picker(AppDistribution.usesAccessibilitySelection ? "Selection translation" : "Translation", selection: $translation) {
                     ForEach(ModelProvider.allCases.filter { $0 != .unconfigured }) { Text($0.title).tag($0.rawValue) }
                 }
                 Picker("Conversation", selection: $conversation) {
@@ -143,7 +207,11 @@ struct ModelsSettings: View {
                 }
                 if !download.status.isEmpty { Text(download.status).font(.caption).foregroundStyle(.secondary) }
                 }
-            } header: { Text("On This Mac") } footer: { Text("Download Index-Translate to translate locally without an API key. After downloading, allow Accessibility in Permissions to enable selection translation. Changing a local model stops its current generation.") }
+            } header: { Text("On This Mac") } footer: {
+                Text(AppDistribution.copiesUserSelectedModels
+                     ? "Download Index-Translate to translate locally without an API key. Choosing another GGUF copies it into the app’s data folder so the sandboxed runtime can read it. Changing a local model stops its current generation."
+                     : "Download Index-Translate to translate locally without an API key. After downloading, allow Accessibility in Permissions to enable selection translation. Changing a local model stops its current generation.")
+            }
             Section {
                 Picker("Provider", selection: $provider) { ForEach(providers) { Text($0.title).tag($0) } }.disabled(testing)
                 if provider == .custom {
@@ -159,7 +227,7 @@ struct ModelsSettings: View {
                 }
                 if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             } header: { Text("API Connection") } footer: {
-                Text("Keys are stored in macOS Keychain. Custom API uses the OpenAI Chat Completions format. Test Connection sends a short test message and may incur a small API charge.")
+                Text("Keys are stored in macOS Keychain. Custom API uses the OpenAI Chat Completions format. Test Connection sends a short test message and may incur a small API charge. The first request to a non-local host asks you to confirm before anything is sent.")
             }
 
 
@@ -192,8 +260,14 @@ struct ModelsSettings: View {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [UTType(filenameExtension: "gguf") ?? .data]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        if conversation { conversationPath = url.path; LocalModel.conversation.stop() }
-        else { modelPath = url.path; LocalModel.shared.stop(); LocalModel.shared.prewarmIfNeeded() }
+        do {
+            let selected = try ImportedModelStore.adoptSelection(url)
+            if conversation { conversationPath = selected.path; LocalModel.conversation.stop() }
+            else { modelPath = selected.path; LocalModel.shared.stop(); LocalModel.shared.prewarmIfNeeded() }
+            if AppDistribution.copiesUserSelectedModels {
+                status = "Copied \(url.lastPathComponent) into the app data folder."
+            }
+        } catch { status = error.localizedDescription }
     }
 }
 struct HistorySettings: View {

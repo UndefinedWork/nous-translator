@@ -49,7 +49,7 @@ import Darwin
         isConversation = conversation
         self.defaults = defaults
         self.configuration = configuration ?? Configuration(
-            binary: (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("Runtime/llama-server"),
+            binary: AppDistribution.bundledRuntimeURL,
             defaultModel: Self.defaultModelURL, port: conversation ? 18764 : 18763,
             log: Self.directory.appendingPathComponent(conversation ? "conversation-runtime.log" : "runtime.log"))
         if self.configuration.observeMemoryPressure {

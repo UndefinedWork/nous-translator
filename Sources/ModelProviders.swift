@@ -141,6 +141,9 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     }
     static func remoteStream(request: URLRequest, provider: ModelProvider) async throws -> URLSession.AsyncBytes {
         try Task.checkCancellation()
+        let host = request.url?.host ?? ""
+        try await CloudAIConsent.ensureAllowed(provider: provider, host: host)
+        try Task.checkCancellation()
         let (bytes, response) = try await session.bytes(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else {
