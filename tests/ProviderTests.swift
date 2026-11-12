@@ -61,7 +61,7 @@ import SwiftUI
         check(before == after && before == NSSize(width: 24, height: 24), "Copy glyph must never change layout")
         let controller = SettingsController()
         check(controller.tabs.tabStyle == .toolbar, "Native toolbar tabs")
-        check(controller.tabs.tabViewItems.count == 5, "General, Models, Images, Permissions and History tabs present")
+        check(controller.tabs.tabViewItems.count == 6, "General, Models, Images, Permissions, Privacy and History tabs present")
         check(controller.window?.toolbarStyle == .preference, "Native preferences toolbar")
         print("PASS: provider requests, endpoint isolation, SSE error/truncation handling, conversational context, copy geometry and native preferences")
     }

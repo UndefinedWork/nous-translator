@@ -1,3 +1,4 @@
+#if !NOUS_APP_STORE
 import CoreGraphics
 
 /// Identify only Telos's generated paste events, leaving real keystrokes visible.
@@ -12,3 +13,4 @@ enum TelosKeyboardEvent {
         event.getIntegerValueField(.eventSourceUserData) != dictationPaste
     }
 }
+#endif

@@ -4,11 +4,11 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 选中文字，点击翻译入口，在浮窗中查看译文。默认使用本机模型，也可以分别为翻译和对话选择在线服务。
 
-[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.2.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
+[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.3.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
 
 ## 下载与安装
 
-当前版本为 **0.6.0-beta.2 预览版（build 8）**。
+当前源码版本为 **0.6.0-beta.3 预览版（build 9）**。GitHub Releases 在维护者按发布指南打包之前，仍可能停留在上一份预览包。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -17,7 +17,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 | 本地模型 | 首次下载约 1.3 GB，需要能够访问 Hugging Face 及其下载服务的网络。权重不包含在安装包中。 |
 | 签名 | 当前是 ad-hoc 签名预览版，尚无 Developer ID 签名，也未通过 Apple 公证。 |
 
-1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.2-macOS-arm64.dmg`。
+1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载当前 Direct 预览版 DMG（文件名含版本号与 `macOS-arm64`）。Mac App Store 包不走这条路径，见 [商店版说明](docs/APP_STORE.md)。
 2. 打开 DMG，将 **Nous Translator.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”打开 Nous Translator。它在屏幕顶部菜单栏显示翻译图标，不常驻 Dock。
 
@@ -31,7 +31,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 2. 打开 **Settings → Permissions**，前往系统的 **隐私与安全性 → 辅助功能**，由你打开 Nous Translator 的允许开关。应用不能替你授予权限。
 3. 在支持的应用中选中文字，点击出现的翻译入口。默认语言对为简体中文 ↔ English；可在 General 中更换语言对、使用自动双向识别，或固定翻译方向。自动模式遇到第三种或无法识别的语言时，译向你选择的主语言 A。
 
-也可以先复制文字，再从菜单栏选择 **Translate Clipboard**；剪贴板翻译不需要辅助功能权限。
+也可以先复制文字，再从菜单栏选择 **Translate Clipboard**，或使用 **Translate Pasted Text…** 与系统服务 **Translate with Nous Translator**。这几条路径不需要辅助功能权限。GitHub Direct 预览包在授予辅助功能后仍支持划词；Mac App Store 构建不读取其他应用的选区。
 
 下载失败时，请确认能访问 Hugging Face 后重试，或在 Models 中选择已下载的 GGUF。模型与应用分开保存，替换应用通常无需重新下载模型。
 
@@ -63,7 +63,7 @@ General 中的 **Online translation → Fast** 默认对已确认支持的 OpenA
 
 ## 当前边界
 
-划词兼容性取决于目标应用提供的选区信息。此版改进了 Nous Browser / Chromium 的选区读取、延迟重试和复制兜底；取消读取时尽量恢复原剪贴板，并保留后续新复制的内容。自动化回归和部分本机验证不代表所有浏览器、网页与应用均已完成端到端验收。
+GitHub Direct 预览包的划词兼容性取决于目标应用提供的选区信息。Mac App Store 构建没有划词覆盖层。此版改进了 Nous Browser / Chromium 的选区读取、延迟重试和复制兜底；取消读取时尽量恢复原剪贴板，并保留后续新复制的内容。自动化回归和部分本机验证不代表所有浏览器、网页与应用均已完成端到端验收。
 
 **当前不提供“粘贴网页 URL 后自动提取整页正文、翻译并总结”的功能。** 可先选择或复制网页中的文字进行翻译。在线服务和自行选择的通用模型，其可用性与回答质量还取决于各自配置。
 
@@ -80,6 +80,12 @@ General 中的 **Online translation → Fast** 默认对已确认支持的 OpenA
 ```sh
 ./scripts/test.sh
 ./scripts/build.sh
+```
+
+商店版布局（不上传 App Store Connect）：
+
+```sh
+NOUS_DISTRIBUTION=appstore NOUS_ALLOW_ADHOC_STORE=1 ./scripts/build.sh
 ```
 
 构建产物为 `build/Nous Translator.app`；构建不等于安装或授权。正式发布使用干净提交、独立输出目录和校验后的安装包，流程见 [发布指南](docs/RELEASING.md)。当前由维护者运行测试和发布脚本，尚未配置 GitHub Actions 自动发布。

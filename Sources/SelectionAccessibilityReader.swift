@@ -1,3 +1,4 @@
+#if !NOUS_APP_STORE
 import AppKit
 import ApplicationServices
 
@@ -184,3 +185,4 @@ actor SelectionAccessibilityReader {
         return value
     }
 }
+#endif

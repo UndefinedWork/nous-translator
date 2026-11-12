@@ -1,3 +1,4 @@
+#if !NOUS_APP_STORE
 import AppKit
 import ApplicationServices
 
@@ -63,3 +64,4 @@ import ApplicationServices
     }
 
 }
+#endif

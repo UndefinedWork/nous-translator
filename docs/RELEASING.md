@@ -9,8 +9,8 @@
 | 字段 | 当前值 | 用途 |
 | --- | --- | --- |
 | `version` | `0.6.0` | 应用显示版本。 |
-| `build` | `8` | 应用构建号；新构建递增。 |
-| `release` | `0.6.0-beta.2` | 产物名称及 Git 标签 `v0.6.0-beta.2`。 |
+| `build` | `9` | 应用构建号；新构建递增。 |
+| `release` | `0.6.0-beta.3` | 产物名称及 Git 标签 `v0.6.0-beta.3`。 |
 | `channel` | `preview` | 预览版以 GitHub Pre-release 发布；稳定版使用 `stable`。 |
 | `minimum_macos` | `14.0` | 应用与运行器的最低编译目标，不等于所有版本已经实机验证。 |
 | `architecture` | `arm64` | 当前仅 Apple Silicon。 |
@@ -23,7 +23,7 @@
 
 ## 预览版发布顺序
 
-以下命令在仓库根目录执行，适用于当前 `0.6.0-beta.2`。之后的版本需同步更新说明路径。开始前已完成版本和说明的提交，工作区应保持干净。
+以下命令在仓库根目录执行，适用于当前 `0.6.0-beta.3` 的 **Direct / GitHub** 预览包。Mac App Store 编译与打包见 [APP_STORE.md](APP_STORE.md)，不要把商店版 ad-hoc 包发到 GitHub Release。开始前已完成版本和说明的提交，工作区应保持干净。
 
 ```sh
 git status --porcelain
@@ -31,7 +31,7 @@ git status --porcelain
 NOUS_APP_OUTPUT='/tmp/nous-release-build/Nous Translator.app' ./scripts/build.sh
 python3 scripts/package-release.py '/tmp/nous-release-build/Nous Translator.app'
 git push origin main
-python3 scripts/publish-release.py --notes docs/releases/0.6.0-beta.2.md
+python3 scripts/publish-release.py --notes docs/releases/0.6.0-beta.3.md
 ```
 
 只有上一步成功才继续下一步。测试、构建或验收发现需要修复时，先修改并提交，再重新执行测试、构建和打包，保证源码、版本信息与安装包对应同一个干净提交。
@@ -64,7 +64,7 @@ python3 scripts/package-release.py '/tmp/nous-release-build/Nous Translator.app'
 
 先确认 notarytool 返回 **Accepted** 并检查公证日志，再执行 stapler 和后续命令。上面的公证 ZIP 只用于提交给 Apple；最终下载包由打包脚本从已附加公证票据的应用重新生成。不能用 `--build-only` 代替最终公证验证。公证通过后若重新构建或修改应用，应重新签名、公证和打包。流程依据 [Apple 公证文档](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
 
-打包完成后再推送对应 `main`，并使用新版本的 `--notes` 文件发布。当前 `0.6.0-beta.2` 尚未完成 Developer ID 签名或 Apple 公证，不能标为已公证稳定版。
+打包完成后再推送对应 `main`，并使用新版本的 `--notes` 文件发布。当前 `0.6.0-beta.3` 尚未完成 Developer ID 签名或 Apple 公证，不能标为已公证稳定版，也未提交 Mac App Store。
 
 ## 安装验收与真实模型检查
 
