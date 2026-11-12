@@ -40,6 +40,8 @@ def info_dictionary(version, commit, dirty, distribution):
         'NousSourceCommit': commit,
         'NousSourceDirty': dirty,
     }
+    # SwiftUI `@main` generates the application principal class. Setting
+    # NSPrincipalClass to NSApplication would skip NousTranslatorApp.
     if distribution == 'appstore':
         info['LSApplicationCategoryType'] = 'public.app-category.productivity'
         info['NSHumanReadableCopyright'] = (
@@ -79,7 +81,11 @@ def self_test():
     assert 'ITSAppUsesNonExemptEncryption' not in direct
     assert 'ITSAppUsesNonExemptEncryption' not in store
     assert store['NousDistribution'] == 'appstore'
+    assert 'NSPrincipalClass' not in direct and 'NSPrincipalClass' not in store
+    assert store['LSApplicationCategoryType'] == 'public.app-category.productivity'
     assert store['NSServices'][0]['NSMessage'] == 'translateService'
+    assert store['NSServices'][0]['NSPortName'] == 'Nous Translator'
+    assert 'public.utf8-plain-text' in store['NSServices'][0]['NSSendTypes']
     assert 'holder is not recorded in the repository' in store['NSHumanReadableCopyright'].lower()
     blob = plistlib.dumps(store)
     assert b'https://' not in blob

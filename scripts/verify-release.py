@@ -88,15 +88,20 @@ def verify(app, require_notarized=False, build_only=False):
             raise SystemExit(f'Unbundled/non-system dependency in {item.name}: {dependency}')
     if len(executables) != 2:
         raise SystemExit(f'Expected exactly the application and static runtime, found {len(executables)} Mach-O files')
-    if distribution == 'appstore' and not build_only:
-        signature = run('codesign', '-d', '--entitlements', '-', app)
+    if distribution == 'appstore':
+        helper_id = run('codesign', '-dv', '--verbose=4', app / 'Contents/MacOS/llama-server')
+        if 'Identifier=com.nous.translator.llama-server' not in helper_id:
+            raise SystemExit('App Store helper must be signed as com.nous.translator.llama-server')
+        signature = run('codesign', '-d', '--entitlements', ':-', app)
         for key in ('com.apple.security.app-sandbox', 'com.apple.security.network.client',
-                    'com.apple.security.network.server'):
+                    'com.apple.security.network.server', 'com.apple.security.files.user-selected.read-only'):
             if key not in signature:
                 raise SystemExit(f'App Store build is missing {key}')
-        helper_sig = run('codesign', '-d', '--entitlements', '-', app / 'Contents/MacOS/llama-server')
-        if 'com.apple.security.inherit' not in helper_sig:
+        helper_sig = run('codesign', '-d', '--entitlements', ':-', app / 'Contents/MacOS/llama-server')
+        if 'com.apple.security.app-sandbox' not in helper_sig or 'com.apple.security.inherit' not in helper_sig:
             raise SystemExit('App Store helper must inherit the app sandbox')
+        if 'com.apple.security.files.user-selected' in helper_sig:
+            raise SystemExit('Inherited helper must not declare its own file-access entitlements')
     elif distribution != 'appstore' and (require_notarized or version['channel'] == 'stable'):
         signature = run('codesign', '-dv', '--verbose=4', app)
         if 'Authority=Developer ID Application:' not in signature:

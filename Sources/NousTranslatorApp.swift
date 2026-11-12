@@ -35,8 +35,10 @@ import ApplicationServices
         menu.addItem(item("Quit Nous Translator", #selector(quit), "q"))
         status.menu = menu
         NotificationCenter.default.addObserver(self, selector: #selector(showModels), name: .init("NousShowModels"), object: nil)
+        #if NOUS_APP_STORE
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+        #endif
         if CommandLine.arguments.contains("--settings-preview") {
             showSettings()
             if CommandLine.arguments.contains("--models") { showModels() }
@@ -109,11 +111,12 @@ import ApplicationServices
         NSApp.activate(ignoringOtherApps: true)
     }
     /// System Services entry. The selector must match Info.plist `NSMessage`.
-    @objc func translateService(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+    @objc func translateService(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>?) {
         presentTranslation(from: pasteboard.string(forType: .string), source: "Services")
     }
     private func presentTranslation(from raw: String?, source: String) {
-        guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty, let screen = NSScreen.main else { return }
+        guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         guard text.count <= 8000 else {
             let alert = NSAlert()
             alert.messageText = "请分段翻译，每次最多 8000 字。"
@@ -140,7 +143,9 @@ struct PasteTranslationView: View {
     var translate: (String) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Paste or type the text to translate. Mac App Store builds do not read selections from other apps.")
+            Text(AppDistribution.usesAccessibilitySelection
+                 ? "Paste or type the text to translate."
+                 : "Paste or type the text to translate. This Mac App Store build does not read selections from other apps.")
                 .foregroundStyle(.secondary)
             TextEditor(text: $text)
                 .font(.body)

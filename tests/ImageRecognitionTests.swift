@@ -22,6 +22,17 @@ private actor RecognitionGate {
 @main struct ImageRecognitionTests {
     @MainActor static func main() async throws {
         _ = NSApplication.shared
+        let consentSuite = "nous-image-consent-" + UUID().uuidString
+        let consentDefaults = UserDefaults(suiteName: consentSuite)!
+        let previousConsentStore = CloudAIConsent.store
+        let previousConsentPrompt = CloudAIConsent.prompt
+        CloudAIConsent.store = consentDefaults
+        CloudAIConsent.prompt = { _, _ in true }
+        defer {
+            CloudAIConsent.store = previousConsentStore
+            CloudAIConsent.prompt = previousConsentPrompt
+            consentDefaults.removePersistentDomain(forName: consentSuite)
+        }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("nous-image-tests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -58,6 +69,14 @@ private actor RecognitionGate {
         let selected = ImageRecognition.preferredLanguages(supported: supported, preferred: ["zh-Hans-CN", "ja-JP", "fr"])
         precondition(selected.first == "fr-FR" && Set(selected) == Set(supported),
                      "Vision language priorities contain only languages supported at the selected recognition level")
+
+        CloudAIConsent.prompt = { _, _ in false }
+        try await rejectsAsync {
+            _ = try await ImageRecognition.recognize(url: image, configuration: online,
+                transport: { _, _ in fatalError("Declining host consent must not upload an image") },
+                keyReader: { _ in fatalError("Declined cloud image recognition must not read credentials") }, cache: nil)
+        }
+        CloudAIConsent.prompt = { _, _ in true }
 
         let recorder = RequestRecorder()
         let cache = ImageRecognitionCache(capacity: 3)

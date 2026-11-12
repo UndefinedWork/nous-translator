@@ -88,6 +88,8 @@ GitHub Direct 预览包的划词兼容性取决于目标应用提供的选区信
 NOUS_DISTRIBUTION=appstore NOUS_ALLOW_ADHOC_STORE=1 ./scripts/build.sh
 ```
 
+Apple Silicon Mac 上的验收脚本与产物步骤见 [Mac 验收清单](docs/app-store/MAC-VALIDATION.md)。该脚本未在非 macOS 环境执行。
+
 构建产物为 `build/Nous Translator.app`；构建不等于安装或授权。正式发布使用干净提交、独立输出目录和校验后的安装包，流程见 [发布指南](docs/RELEASING.md)。当前由维护者运行测试和发布脚本，尚未配置 GitHub Actions 自动发布。
 
 应用代码的来源与许可范围见 [SOURCE_NOTICE.md](SOURCE_NOTICE.md)。公开源码不代表整个应用获得 MIT 或其他统一开源许可。运行器与单独下载的模型各有其许可，详见 [第三方声明](THIRD_PARTY_NOTICES.md) 和 [完整许可文本](Resources/Licenses/)。

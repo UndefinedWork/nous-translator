@@ -64,4 +64,7 @@ import ApplicationServices
     }
 
 }
+#else
+/// Present so `-D NOUS_APP_STORE` does not compile an empty translation unit.
+enum SelectionCapture {}
 #endif

@@ -54,7 +54,8 @@ helper_entitlements="$project_root/Resources/Signing/llama-server.appstore.entit
 sign_args=(--force --sign "$identity")
 if [[ "$identity" != - ]]; then sign_args+=(--options runtime --timestamp); fi
 if [[ "$distribution" == appstore ]]; then
-    codesign "${sign_args[@]}" --entitlements "$helper_entitlements" "$app/Contents/MacOS/llama-server"
+    codesign "${sign_args[@]}" --identifier com.nous.translator.llama-server \
+        --entitlements "$helper_entitlements" "$app/Contents/MacOS/llama-server"
     codesign "${sign_args[@]}" --entitlements "$app_entitlements" "$app"
 else
     codesign "${sign_args[@]}" "$app/Contents/Resources/Runtime/llama-server"

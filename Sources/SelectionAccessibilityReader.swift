@@ -185,4 +185,8 @@ actor SelectionAccessibilityReader {
         return value
     }
 }
+#else
+/// Present so `-D NOUS_APP_STORE` does not compile an empty translation unit.
+enum SelectionAccessibilityReader {}
+enum SelectionCopyCommand {}
 #endif

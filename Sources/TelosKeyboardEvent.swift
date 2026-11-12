@@ -13,4 +13,7 @@ enum TelosKeyboardEvent {
         event.getIntegerValueField(.eventSourceUserData) != dictationPaste
     }
 }
+#else
+/// Present so `-D NOUS_APP_STORE` does not compile an empty translation unit.
+enum TelosKeyboardEvent {}
 #endif
