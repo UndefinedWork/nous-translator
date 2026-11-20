@@ -49,6 +49,15 @@ python3 scripts/write-info-plist.py "$app" --commit "$source_commit" --dirty "$s
     --distribution "$distribution"
 xattr -cr "$app"
 
+profile="${NOUS_PROVISIONING_PROFILE:-}"
+if [[ "$distribution" == appstore && -n "$profile" ]]; then
+    python3 scripts/check-provisioning-profile.py "$profile"
+    cp "$profile" "$app/Contents/embedded.provisionprofile"
+elif [[ "$distribution" == appstore && "$identity" != - ]]; then
+    echo "Apple Distribution store builds need NOUS_PROVISIONING_PROFILE pointing at a Mac App Store profile for com.nous.translator." >&2
+    exit 1
+fi
+
 app_entitlements="$project_root/Resources/Signing/NousTranslator.appstore.entitlements"
 helper_entitlements="$project_root/Resources/Signing/llama-server.appstore.entitlements"
 sign_args=(--force --sign "$identity")

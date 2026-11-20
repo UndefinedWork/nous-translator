@@ -25,7 +25,7 @@ def main():
     helper = load_entitlements(ROOT / 'Resources/Signing/llama-server.appstore.entitlements')
     require(app.get('com.apple.security.app-sandbox') is True, 'App Store app entitlements must enable App Sandbox')
     for key in ('com.apple.security.network.client', 'com.apple.security.network.server',
-                'com.apple.security.files.user-selected.read-only'):
+                'com.apple.security.files.user-selected.read-only', 'com.apple.security.cs.allow-jit'):
         require(app.get(key) is True, f'Missing app entitlement {key}')
     require('com.apple.security.inherit' not in app, 'The app must not inherit another sandbox')
     require(set(helper) == {'com.apple.security.app-sandbox', 'com.apple.security.inherit'},
@@ -44,6 +44,8 @@ def main():
     require('--identifier com.nous.translator.llama-server' in build,
             'App Store helper signing must set a stable code identifier')
     require('swift_args+=(-D NOUS_APP_STORE)' in build, 'App Store builds must define NOUS_APP_STORE')
+    require('embedded.provisionprofile' in build,
+            'Distribution store builds must embed the Mac App Store provisioning profile')
 
     verify = (ROOT / 'scripts/verify-release.py').read_text()
     require("if distribution == 'appstore' and not build_only:" not in verify,
@@ -72,6 +74,8 @@ def main():
             'Only the App Store binary should register as a Services provider')
 
     providers = (ROOT / 'Sources/ModelProviders.swift').read_text()
+    require('kSecUseDataProtectionKeychain' in providers and 'NOUS_APP_STORE' in providers,
+            'App Store Keychain access must use the data-protection keychain')
     bytes_at = providers.find('session.bytes')
     require(bytes_at > 0, 'ModelProviders must own the remote HTTP stream')
     require('CloudAIConsent.ensureAllowed' in providers[:bytes_at],
@@ -112,8 +116,18 @@ def main():
     manifest = plistlib.loads(privacy_manifest.read_bytes())
     require(manifest.get('NSPrivacyTracking') is False,
             'PrivacyInfo.xcprivacy must set NSPrivacyTracking to false until tracking exists')
+    accessed = manifest.get('NSPrivacyAccessedAPITypes') or []
+    user_defaults = [item for item in accessed
+                     if item.get('NSPrivacyAccessedAPIType') == 'NSPrivacyAccessedAPICategoryUserDefaults']
+    require(user_defaults and 'CA92.1' in user_defaults[0].get('NSPrivacyAccessedAPITypeReasons', []),
+            'PrivacyInfo.xcprivacy must declare UserDefaults reason CA92.1 for App Store uploads')
     require('https://' not in privacy_manifest.read_text().lower(),
             'Do not invent URLs in PrivacyInfo.xcprivacy')
+
+    upload = (ROOT / 'scripts/prepare-appstore-upload.sh').read_text()
+    require('NOUS_ASC_UPLOAD' in upload and 'will not upload' in upload,
+            'prepare-appstore-upload.sh must refuse to upload')
+    require('NOUS_PROVISIONING_PROFILE' in upload, 'Upload prep must require a provisioning profile')
 
     import importlib.util
     spec = importlib.util.spec_from_file_location('write_info_plist', ROOT / 'scripts/write-info-plist.py')

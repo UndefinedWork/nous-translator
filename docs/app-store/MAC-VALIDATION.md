@@ -4,7 +4,12 @@
 
 不要把仓库克隆到其他用户的机器上执行；在你自己的 Apple Silicon Mac 上，从你已有的 `UndefinedWork/nous-translator` 检出运行。
 
-脚本入口：仓库根目录的 [`scripts/validate-appstore-macos.sh`](../../scripts/validate-appstore-macos.sh)。
+脚本入口：
+
+- 布局与 Direct 回归：[`scripts/validate-appstore-macos.sh`](../../scripts/validate-appstore-macos.sh)
+- 上传用 PKG（仍不上传）：[`scripts/prepare-appstore-upload.sh`](../../scripts/prepare-appstore-upload.sh)
+
+Bundle `com.nous.translator` 已注册（ASC id `536KMKRF6V`）。**仍无 App record**，Transporter 在记录创建前会拒收。
 
 ## 前置
 
@@ -23,13 +28,16 @@ cd /path/to/nous-translator
 
 无 Distribution 身份时，脚本会用 `NOUS_ALLOW_ADHOC_STORE=1` 做商店**布局**包。ad-hoc 包不可上传。
 
-有身份时：
+打可上传 PKG（仍不提交）时：
 
 ```sh
 export NOUS_CODESIGN_IDENTITY='Apple Distribution: [your team]'
 export NOUS_INSTALLER_IDENTITY='3rd Party Mac Developer Installer: [your team]'
-./scripts/validate-appstore-macos.sh
+export NOUS_PROVISIONING_PROFILE='/path/to/MacAppStore.provisionprofile'
+./scripts/prepare-appstore-upload.sh
 ```
+
+布局验收仍可用 `./scripts/validate-appstore-macos.sh`。ad-hoc 包不可上传。
 
 默认产物路径：
 
@@ -69,13 +77,16 @@ NOUS_APP_OUTPUT='/tmp/nous-appstore/Nous Translator.app' \
 
 2. 核对 Info.plist：`CFBundleIdentifier` = `com.nous.translator`，`NousDistribution` = `appstore`，存在 `NSServices` / `translateService`，存在 `PrivacyInfo.xcprivacy`，`llama-server` 仅在 `Contents/MacOS/`，helper 签名 Identifier = `com.nous.translator.llama-server`。
 
-3. 打包（脚本仍不上传）：
+3. 打包（脚本仍不上传）。Distribution 构建必须带 `NOUS_PROVISIONING_PROFILE`：
 
 ```sh
+export NOUS_PROVISIONING_PROFILE='/path/to/MacAppStore.provisionprofile'
 NOUS_INSTALLER_IDENTITY='3rd Party Mac Developer Installer: [your team]' \
   python3 scripts/package-appstore.py '/tmp/nous-appstore/Nous Translator.app' \
   --output /tmp/nous-appstore-payload
 ```
+
+或直接运行 `./scripts/prepare-appstore-upload.sh`。
 
 得到 `Nous Translator.app` 与（若提供 installer 身份）`Nous-Translator-*-appstore.pkg`，以及 `SUBMISSION-NOTES.txt`。
 
@@ -86,5 +97,5 @@ NOUS_INSTALLER_IDENTITY='3rd Party Mac Developer Installer: [your team]' \
 ## 硬阻塞（与脚本是否变绿无关）
 
 1. 继承自 Pico 的应用代码：cited commit 根目录看不到 LICENSE/COPYING。公开源码不授予统一开源许可。在权利人书面授权之前，不应把商店版当作可上架成品。
-2. 本环境未在目标团队下确认 `com.nous.translator` 可用性，未创建 ASC 应用记录。
-3. 无 Developer ID / Apple Distribution / 公证 / 沙盒实机 / Metal 结论可从 Linux 代称。
+2. Bundle `com.nous.translator` 已注册（ASC id `536KMKRF6V`）。**App record 仍未创建**，Transporter 在此之前会拒收。
+3. 无 Apple Distribution / 描述文件 / productbuild / 沙盒实机 / Metal 结论可从 Linux 代称。当前账号没有本仓库可用的 Mac pool。

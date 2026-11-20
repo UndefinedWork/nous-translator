@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Security
 
 @main struct ProviderTests {
     @MainActor static func main() throws {
@@ -62,6 +63,13 @@ import SwiftUI
         let controller = SettingsController()
         check(controller.tabs.tabStyle == .toolbar, "Native toolbar tabs")
         check(controller.tabs.tabViewItems.count == 6, "General, Models, Images, Permissions, Privacy and History tabs present")
+        let keyQuery = APIKeyStore.query("fixture")
+        check(keyQuery[kSecAttrService as String] as? String == "com.nous.translator.api", "Keychain service stays com.nous.translator.api")
+        #if NOUS_APP_STORE
+        check(keyQuery[kSecUseDataProtectionKeychain as String] as? Bool == true, "App Store Keychain uses the data-protection keychain")
+        #else
+        check(keyQuery[kSecUseDataProtectionKeychain as String] == nil, "Direct Keychain lookup is unchanged")
+        #endif
         check(controller.window?.toolbarStyle == .preference, "Native preferences toolbar")
         print("PASS: provider requests, endpoint isolation, SSE error/truncation handling, conversational context, copy geometry and native preferences")
     }

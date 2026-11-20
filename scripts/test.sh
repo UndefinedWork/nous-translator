@@ -5,9 +5,11 @@ cd "$(dirname "$0")/.."
 python3 scripts/write-info-plist.py --self-test
 python3 scripts/check-appstore-layout.py
 python3 scripts/check-license-evidence.py
+python3 scripts/check-asc-status.py
+python3 scripts/check-provisioning-profile.py --self-test
 if [[ "$(uname -s)" != Darwin ]] || ! command -v xcrun >/dev/null; then
-    echo "Skipping Swift tests, codesign, sandbox, Metal, Services, and App Store packaging; they require macOS and Xcode command line tools."
-    echo "Skipping ./scripts/validate-appstore-macos.sh (Apple Silicon Mac only; not executed here)."
+    echo "Skipping Swift tests, codesign, sandbox, Metal, Services, productbuild, and App Store packaging; they require macOS and Xcode command line tools."
+    echo "Skipping ./scripts/validate-appstore-macos.sh and ./scripts/prepare-appstore-upload.sh (Apple Silicon Mac only; not executed here)."
     exit 0
 fi
 temp="$(mktemp -d /tmp/nous-tests.XXXXXX)"

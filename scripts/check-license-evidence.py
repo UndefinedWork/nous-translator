@@ -5,6 +5,7 @@ Classifies Pico as a missing declaration in the cited snapshot, not as proof
 that rights are absent. Network failure is a skip, not a rights finding.
 """
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -15,11 +16,15 @@ ROOT = Path(__file__).resolve().parent.parent
 PICO_COMMIT = '450fa2bc1dbf5651da513c2a2efd4c234f1dc7e2'
 LLAMA_COMMIT = 'cd959bae99ff4bed22bef2604f45241c09bbb8c8'
 LICENSE_NAMES = {'license', 'license.md', 'license.txt', 'copying', 'copying.md', 'licence', 'licence.md'}
-UA = 'nous-translator-license-evidence/0.6.0-beta.3'
+UA = 'nous-translator-license-evidence/0.6.0-beta.4'
 
 
 def fetch(url, timeout=20):
-    request = urllib.request.Request(url, headers={'User-Agent': UA, 'Accept': 'application/json'})
+    headers = {'User-Agent': UA, 'Accept': 'application/json'}
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    if token and 'github.com' in url:
+        headers['Authorization'] = 'Bearer ' + token
+    request = urllib.request.Request(url, headers=headers)
     context = ssl.create_default_context()
     with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
         return response.read()

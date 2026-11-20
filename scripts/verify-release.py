@@ -2,7 +2,9 @@
 """Validate a release bundle without installing it or changing system settings."""
 import argparse
 import ctypes
+import importlib.util
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -45,6 +47,16 @@ def verify(app, require_notarized=False, build_only=False):
             raise SystemExit('App Store builds must not also ship llama-server under Resources')
         if 'https://' in str(info.get('NSHumanReadableCopyright', '')).lower():
             raise SystemExit('Do not place an unverified URL in NSHumanReadableCopyright')
+        profile = app / 'Contents/embedded.provisionprofile'
+        require_profile = os.environ.get('NOUS_REQUIRE_STORE_PROFILE') == '1'
+        if require_profile and not profile.is_file():
+            raise SystemExit('Upload-ready App Store builds must embed a Mac App Store provisioning profile')
+        if profile.is_file():
+            spec = importlib.util.spec_from_file_location(
+                'check_provisioning_profile', ROOT / 'scripts/check-provisioning-profile.py')
+            checker = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(checker)
+            checker.verify(profile)
     for item in required:
         if not (app / item).is_file():
             raise SystemExit(f'Missing bundle resource: {item}')
@@ -94,7 +106,8 @@ def verify(app, require_notarized=False, build_only=False):
             raise SystemExit('App Store helper must be signed as com.nous.translator.llama-server')
         signature = run('codesign', '-d', '--entitlements', ':-', app)
         for key in ('com.apple.security.app-sandbox', 'com.apple.security.network.client',
-                    'com.apple.security.network.server', 'com.apple.security.files.user-selected.read-only'):
+                    'com.apple.security.network.server', 'com.apple.security.files.user-selected.read-only',
+                    'com.apple.security.cs.allow-jit'):
             if key not in signature:
                 raise SystemExit(f'App Store build is missing {key}')
         helper_sig = run('codesign', '-d', '--entitlements', ':-', app / 'Contents/MacOS/llama-server')

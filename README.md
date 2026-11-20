@@ -4,11 +4,11 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 选中文字，点击翻译入口，在浮窗中查看译文。默认使用本机模型，也可以分别为翻译和对话选择在线服务。
 
-[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.3.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
+[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.4.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
 
 ## 下载与安装
 
-当前源码版本为 **0.6.0-beta.3 预览版（build 9）**。GitHub Releases 在维护者按发布指南打包之前，仍可能停留在上一份预览包。
+当前源码版本为 **0.6.0-beta.4 预览版（build 10）**。GitHub Releases 在维护者按发布指南打包之前，仍可能停留在上一份预览包。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -88,7 +88,7 @@ GitHub Direct 预览包的划词兼容性取决于目标应用提供的选区信
 NOUS_DISTRIBUTION=appstore NOUS_ALLOW_ADHOC_STORE=1 ./scripts/build.sh
 ```
 
-Apple Silicon Mac 上的验收脚本与产物步骤见 [Mac 验收清单](docs/app-store/MAC-VALIDATION.md)。该脚本未在非 macOS 环境执行。
+Apple Silicon Mac 上的验收与上传准备见 [Mac 验收清单](docs/app-store/MAC-VALIDATION.md)。这些脚本未在非 macOS 环境执行，也不会上传。
 
 构建产物为 `build/Nous Translator.app`；构建不等于安装或授权。正式发布使用干净提交、独立输出目录和校验后的安装包，流程见 [发布指南](docs/RELEASING.md)。当前由维护者运行测试和发布脚本，尚未配置 GitHub Actions 自动发布。
 
