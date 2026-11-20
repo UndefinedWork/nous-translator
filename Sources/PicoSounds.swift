@@ -17,7 +17,12 @@ import AppKit
     }
 
     private static var interfaceSoundsEnabled: Bool {
+        #if NOUS_APP_STORE
+        // Sandboxed builds must not read another process's preferences suite.
+        true
+        #else
         // Absent means the default, which is on.
         UserDefaults(suiteName: "com.apple.systemsound")?.object(forKey: "com.apple.sound.uiaudio.enabled") as? Bool ?? true
+        #endif
     }
 }

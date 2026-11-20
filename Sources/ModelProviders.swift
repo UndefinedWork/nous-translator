@@ -81,8 +81,17 @@ struct APIProfile: Equatable {
     }
 }
 enum APIKeyStore {
-    private static func query(_ account: String) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.nous.translator.api", kSecAttrAccount as String: account]
+    static func query(_ account: String) -> [String: Any] {
+        var item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.nous.translator.api",
+            kSecAttrAccount as String: account
+        ]
+        #if NOUS_APP_STORE
+        // Sandboxed Mac App Store builds must use the data-protection keychain.
+        item[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return item
     }
     static func read(_ account: String) throws -> String {
         var q = query(account); q[kSecReturnData as String] = true
@@ -140,6 +149,9 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
         return try await remoteStream(request: request, provider: profile.provider)
     }
     static func remoteStream(request: URLRequest, provider: ModelProvider) async throws -> URLSession.AsyncBytes {
+        try Task.checkCancellation()
+        let host = request.url?.host ?? ""
+        try await CloudAIConsent.ensureAllowed(provider: provider, host: host)
         try Task.checkCancellation()
         let (bytes, response) = try await session.bytes(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0

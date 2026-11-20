@@ -140,6 +140,8 @@ enum ImageRecognition {
                 }
             } onCancel: { cancellation.cancel() }
         } else {
+            let host = try configuration.profile.endpoint().host ?? ""
+            try await CloudAIConsent.ensureAllowed(provider: configuration.provider, host: host)
             // Read the selected endpoint's key only when the user actually submits an image.
             let key = try keyReader(configuration.profile.account).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else {
