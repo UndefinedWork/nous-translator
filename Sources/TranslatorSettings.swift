@@ -75,12 +75,17 @@ struct GeneralSettings: View {
 }
 struct PermissionSettings: View {
     @State private var trusted = AXIsProcessTrusted()
+    private var perApplication: Bool { SelectionPermissionRules.usesPerApplicationAccess() }
     var body: some View {
         Form {
             Section {
-                LabeledContent("Accessibility") {
-                    Label(trusted ? "Allowed" : "Not Allowed", systemImage: trusted ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(trusted ? Color.green : Color.secondary)
+                LabeledContent(perApplication ? "System & App Protection Override" : "Accessibility") {
+                    if perApplication {
+                        Text("Managed by macOS").foregroundStyle(.secondary)
+                    } else {
+                        Label(trusted ? "Allowed" : "Not Allowed", systemImage: trusted ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(trusted ? Color.green : Color.secondary)
+                    }
                 }
                 HStack {
                     Spacer()
@@ -90,7 +95,9 @@ struct PermissionSettings: View {
                     }
                 }
             } header: { Text("Selection Translation") } footer: {
-                Text("Allow Nous Translator to read selected text in other apps. Clipboard translation does not require Accessibility access.")
+                Text(perApplication
+                    ? "Click + in System Settings, choose Nous Translator, then Choose Apps and select Nous Browser or the apps you want to translate in. Clipboard translation does not need this permission."
+                    : "Allow Nous Translator to read selected text in other apps. Clipboard translation does not require Accessibility access.")
             }
         }.formStyle(.grouped)
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in trusted = AXIsProcessTrusted() }

@@ -60,7 +60,7 @@ import ApplicationServices
             // Register this installed copy after the updater resets its permission.
             // The updater opens System Settings, including when model setup is also needed.
             Self.requestAccessibility()
-        } else if !needsModel && !AXIsProcessTrusted() {
+        } else if !needsModel && !SelectionPermissionRules.usesPerApplicationAccess() && !AXIsProcessTrusted() {
             Self.requestAccessibility()
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }

@@ -3,6 +3,23 @@ import CoreGraphics
 
 @main struct SelectionCaptureTests {
     @MainActor static func main() async {
+        let oldOS = OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 9)
+        let perAppOS = OperatingSystemVersion(majorVersion: 27, minorVersion: 3, patchVersion: 0)
+        precondition(SelectionPermissionRules.mode(trusted: false, version: oldOS) == .denied)
+        precondition(SelectionPermissionRules.mode(trusted: true, version: oldOS) == .legacyTrusted)
+        for trusted in [false, true] {
+            precondition(SelectionPermissionRules.mode(trusted: trusted, version: perAppOS) == .targetOnly,
+                         "Global trust cannot represent permission for a particular app")
+        }
+        precondition(SelectionPermissionRules.usesPerApplicationAccess(version:
+            OperatingSystemVersion(majorVersion: 28, minorVersion: 0, patchVersion: 0)))
+        var keyboardCalls = 0
+        precondition(SelectionCopyMode.menuOnly.perform(pressMenu: { true }, postKeyboard: { keyboardCalls += 1; return true }))
+        precondition(!SelectionCopyMode.menuOnly.perform(pressMenu: { false }, postKeyboard: { keyboardCalls += 1; return true }))
+        precondition(keyboardCalls == 0, "Unavailable or refused AX Copy must never turn into a synthetic keystroke with per-app access")
+        precondition(SelectionCopyMode.menuOrKeyboard.perform(pressMenu: { false }, postKeyboard: { keyboardCalls += 1; return true }))
+        precondition(keyboardCalls == 1, "Legacy full-access copy fallback is preserved")
+
         // Event timelines exercise restoration separately from stale-result suppression.
         // All pasteboard operations are injected: these tests do not touch system permissions
         // or the user's clipboard.
@@ -57,6 +74,15 @@ import CoreGraphics
 
         let down = CGPoint(x: 100, y: 500), up = CGPoint(x: 300, y: 500)
         var reads = 0, copies = 0
+        let denied = await SelectionCapturePipeline.capture(down: down, up: up, primaryHeight: 900,
+            pointerWasText: true, delays: [0, 0, 0], isCurrent: { true },
+            read: { reads += 1; return SelectionSnapshot(textUnderPointer: true, accessDenied: true) },
+            copy: { copies += 1; return "not permitted" })
+        precondition(denied == nil && reads == 1 && copies == 0,
+                     "A refused target read stops immediately without retrying or copying")
+        precondition(!SelectionGestureRules.shouldRead(down: down, up: down, clickCount: 1, shift: false),
+                     "An ordinary click cannot request per-app access")
+        reads = 0
         let delayed = await SelectionCapturePipeline.capture(down: down, up: up, primaryHeight: 900,
             pointerWasText: false, delays: [0, 0, 0, 0], isCurrent: { true },
             read: {

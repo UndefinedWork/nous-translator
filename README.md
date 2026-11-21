@@ -8,7 +8,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 ## 下载与安装
 
-当前版本为 **0.6.0-beta.3 预览版（build 9）**。
+当前版本为 **0.6.0-beta.3 预览版（build 10）**。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -28,7 +28,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 缺少默认本地模型时，应用会自动打开 **Settings → Models**。
 
 1. 在 **On This Mac** 点击 **Download**，下载 Index-Translate-2B Q4_K_M。可查看进度、取消和重试；下载完成后可离线翻译。也可以选择已有的兼容 GGUF 文件。
-2. 打开 **Settings → Permissions**，前往系统的 **隐私与安全性 → 辅助功能**，由你打开 Nous Translator 的允许开关。应用不能替你授予权限。
+2. 打开 **Settings → Permissions → Open System Settings…**。在较早的 macOS 上，前往「隐私与安全性 → 辅助功能」打开 Nous Translator。macOS 27.3 的系统页面名为 **System & App Protection Override**。如果列表没有 Nous Translator，点 **＋** 选择已安装的 App，然后点 **Choose Apps**，选择你要划词的应用，例如 Nous Browser，并按系统提示确认。[Apple 授权说明](https://support.apple.com/en-us/149699)
 3. 在支持的应用中选中文字，点击出现的翻译入口。默认语言对为简体中文 ↔ English；可在 General 中更换语言对、使用自动双向识别，或固定翻译方向。自动模式遇到第三种或无法识别的语言时，译向你选择的主语言 A。
 
 也可以先复制文字，再从菜单栏选择 **Translate Clipboard**；剪贴板翻译不需要辅助功能权限。

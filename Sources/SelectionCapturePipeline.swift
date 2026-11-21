@@ -1,6 +1,32 @@
 import Foundation
 import CoreGraphics
 
+enum SelectionAccessMode {
+    case denied, legacyTrusted, targetOnly
+}
+
+enum SelectionPermissionRules {
+    static func usesPerApplicationAccess(version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> Bool {
+        version.majorVersion > 27 || (version.majorVersion == 27 && version.minorVersion >= 3)
+    }
+
+    static func mode(trusted: Bool, version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> SelectionAccessMode {
+        if usesPerApplicationAccess(version: version) { return .targetOnly }
+        return trusted ? .legacyTrusted : .denied
+    }
+}
+
+/// A targeted AX menu action is checked by macOS again. Limited app access never
+/// falls through to a synthetic keyboard event, even when the global trust bit is true.
+enum SelectionCopyMode {
+    case menuOnly, menuOrKeyboard
+
+    func perform(pressMenu: () -> Bool, postKeyboard: () -> Bool) -> Bool {
+        if pressMenu() { return true }
+        return self == .menuOrKeyboard && postKeyboard()
+    }
+}
+
 /// Values only: Accessibility objects stay on the reader's actor.
 struct SelectionSnapshot {
     var text = ""
@@ -8,6 +34,7 @@ struct SelectionSnapshot {
     var secure = false
     var textUnderPointer = false
     var waitingForAccessibility = false
+    var accessDenied = false
 }
 
 struct CapturedSelection {
@@ -73,7 +100,7 @@ struct CapturedSelection {
             do { try await sleep(delay) } catch { return nil }
             guard !Task.isCancelled, isCurrent() else { return nil }
             last = await read()
-            guard !Task.isCancelled, isCurrent(), !last.secure else { return nil }
+            guard !Task.isCancelled, isCurrent(), !last.secure, !last.accessDenied else { return nil }
             let text = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
                 guard text.count <= 8000 else { return nil }

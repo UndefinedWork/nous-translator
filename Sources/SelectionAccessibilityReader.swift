@@ -11,8 +11,20 @@ actor SelectionAccessibilityReader {
     private var manualAccessibility = Set<pid_t>()
     private var warmupUntil: [pid_t: TimeInterval] = [:]
     private var retryActivationAfter: [pid_t: TimeInterval] = [:]
+    private var readTargetPID: pid_t?
 
-    func prepare(pid: pid_t) { _ = application(pid) }
+    func prepare(pid: pid_t, targetOnly: Bool = false) {
+        readTargetPID = targetOnly ? pid : nil
+        defer { readTargetPID = nil }
+        _ = application(pid)
+    }
+
+    /// Only called for the foreground PID after an actual selection gesture.
+    /// AX enforces the user's per-app decision; this does not grant permission.
+    func canReadApplication(pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        return attribute(app, kAXRoleAttribute) as? String == kAXApplicationRole
+    }
 
     private func application(_ pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
@@ -43,10 +55,19 @@ actor SelectionAccessibilityReader {
         return app
     }
 
-    func selection(pid: pid_t, down: CGPoint, up: CGPoint, primaryHeight: CGFloat) -> SelectionSnapshot {
-        let app = application(pid)
+    func selection(pid: pid_t, down: CGPoint, up: CGPoint, primaryHeight: CGFloat, targetOnly: Bool = false) -> SelectionSnapshot {
+        readTargetPID = targetOnly ? pid : nil
+        defer { readTargetPID = nil }
+        // Targeted browser activation already ran once after the gesture's access check.
+        let app = targetOnly ? AXUIElementCreateApplication(pid) : application(pid)
+        AXUIElementSetMessagingTimeout(app, 0.12)
         let deadline = ProcessInfo.processInfo.systemUptime + 0.3
-        let focused = element(attribute(app, kAXFocusedUIElementAttribute))
+        var rawFocused: CFTypeRef?
+        let focusedStatus = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &rawFocused)
+        if targetOnly, focusedStatus != .success && focusedStatus != .noValue && focusedStatus != .attributeUnsupported {
+            return SelectionSnapshot(accessDenied: true)
+        }
+        let focused = element(rawFocused)
         if let focused, isSecure(focused) { return SelectionSnapshot(secure: true) }
         var candidates: [AXUIElement] = []
         // A drag can begin/end in the whitespace beside a line. Chromium may return its
@@ -133,8 +154,10 @@ actor SelectionAccessibilityReader {
         return rect
     }
 
-    func copyCommand(pid: pid_t) -> SelectionCopyCommand {
-        let app = application(pid)
+    func copyCommand(pid: pid_t, targetOnly: Bool = false) -> SelectionCopyCommand {
+        readTargetPID = targetOnly ? pid : nil
+        defer { readTargetPID = nil }
+        let app = targetOnly ? AXUIElementCreateApplication(pid) : application(pid)
         let deadline = ProcessInfo.processInfo.systemUptime + 0.3
         guard let bar = element(attribute(app, kAXMenuBarAttribute)),
               let menus = attribute(bar, kAXChildrenAttribute) as? [AXUIElement] else { return .unavailable }
@@ -145,6 +168,10 @@ actor SelectionAccessibilityReader {
                     guard ProcessInfo.processInfo.systemUptime < deadline else { return .unavailable }
                     guard (attribute(item, kAXMenuItemCmdCharAttribute) as? String)?.lowercased() == "c",
                           (attribute(item, kAXMenuItemCmdModifiersAttribute) as? Int) == 0 else { continue }
+                    if targetOnly {
+                        guard let enabled = attribute(item, kAXEnabledAttribute) as? Bool else { return .unavailable }
+                        return enabled ? .enabled(item) : .disabled
+                    }
                     return attribute(item, kAXEnabledAttribute) as? Bool == false ? .disabled : .enabled(item)
                 }
             }
@@ -172,15 +199,22 @@ actor SelectionAccessibilityReader {
         return (raw as! AXUIElement)
     }
     private func attribute(_ node: AXUIElement, _ name: String) -> CFTypeRef? {
+        guard matchesReadTarget(node) else { return nil }
         AXUIElementSetMessagingTimeout(node, 0.12)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(node, name as CFString, &value) == .success else { return nil }
         return value
     }
     private func parameter(_ node: AXUIElement, _ name: String, _ argument: CFTypeRef) -> CFTypeRef? {
+        guard matchesReadTarget(node) else { return nil }
         AXUIElementSetMessagingTimeout(node, 0.12)
         var value: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(node, name as CFString, argument, &value) == .success else { return nil }
         return value
+    }
+    private func matchesReadTarget(_ node: AXUIElement) -> Bool {
+        guard let readTargetPID else { return true }
+        var owner: pid_t = 0
+        return AXUIElementGetPid(node, &owner) == .success && owner == readTargetPID
     }
 }

@@ -83,7 +83,9 @@ import SwiftUI
     }
 
     private static func prepareFrontmostApplication() {
-        guard AXIsProcessTrusted(), let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+        // Per-app "Ask First" must never be triggered by app activation or an ordinary click.
+        guard !SelectionPermissionRules.usesPerApplicationAccess(), AXIsProcessTrusted(),
+              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               pid != ProcessInfo.processInfo.processIdentifier else { return }
         Task { await SelectionAccessibilityReader.shared.prepare(pid: pid) }
     }
@@ -119,9 +121,11 @@ import SwiftUI
         // A visible Nous window may be behind the browser. Its frame does not tell us which app
         // received the gesture; the local/global event monitors already make that distinction.
         guard SelectionGestureRules.shouldRead(down: down, up: up, clickCount: event.clickCount,
-                shift: event.modifierFlags.contains(.shift)), AXIsProcessTrusted(),
+                shift: event.modifierFlags.contains(.shift)),
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        let access = SelectionPermissionRules.mode(trusted: AXIsProcessTrusted())
+        guard access != .denied else { return }
         let token = UUID(); gesture = token
         sourcePID = app.processIdentifier
         // A text drag starts over text; it often ends past the end of a line, where the pointer is an arrow.
@@ -131,11 +135,20 @@ import SwiftUI
             let isCurrent = { [weak self] in
                 self?.gesture == token && NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
             }
+            guard !Task.isCancelled, isCurrent() else { return }
+            if access == .targetOnly {
+                guard await SelectionAccessibilityReader.shared.canReadApplication(pid: app.processIdentifier),
+                      !Task.isCancelled, isCurrent() else { return }
+                // Chromium exposes its selection tree after activation. Only activate this
+                // already-checked target for the user's gesture, never on background focus changes.
+                await SelectionAccessibilityReader.shared.prepare(pid: app.processIdentifier, targetOnly: true)
+            }
             let result = await SelectionCapturePipeline.capture(down: down, up: up,
                 primaryHeight: primary, pointerWasText: iBeam, isCurrent: isCurrent,
                 read: { await SelectionAccessibilityReader.shared.selection(pid: app.processIdentifier,
-                    down: down, up: up, primaryHeight: primary) },
-                copy: { await SelectionCapture.copySelection(pid: app.processIdentifier, isCurrent: isCurrent) })
+                    down: down, up: up, primaryHeight: primary, targetOnly: access == .targetOnly) },
+                copy: { await SelectionCapture.copySelection(pid: app.processIdentifier,
+                    mode: access == .targetOnly ? .menuOnly : .menuOrKeyboard, isCurrent: isCurrent) })
             guard isCurrent(), let result else { return }
             self?.captureTask = nil
             self?.showButton(text: result.text, app: app.localizedName ?? "", selection: result.rect)
