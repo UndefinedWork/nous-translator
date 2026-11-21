@@ -17,7 +17,7 @@ import ApplicationServices
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         status.button?.image = NSImage(systemSymbolName: "translate", accessibilityDescription: "Nous Translator")
         let menu = NSMenu()
-        for (title, action, key) in [("Settings…", #selector(showSettings), ","), ("Translate Clipboard", #selector(translateClipboard), "t"), ("Enable Selection Translation…", #selector(permission), ""), ("Quit Nous Translator", #selector(quit), "q")] {
+        for (title, action, key) in [("Settings…", #selector(showSettings), ","), ("Translate Clipboard", #selector(translateClipboard), "t"), ("Quit Nous Translator", #selector(quit), "q")] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key); item.target = self; menu.addItem(item)
         }
         status.menu = menu
@@ -53,9 +53,17 @@ import ApplicationServices
         }
         controller.start()
         LocalModel.shared.prewarmIfNeeded()
-        if CommandLine.arguments.contains("--preview") { controller.preview() }
-        else if LocalModel.needsInitialModelSetup() { showModels() }
-        else if !AXIsProcessTrusted() { permission() }
+        if CommandLine.arguments.contains("--preview") { controller.preview(); return }
+        let needsModel = LocalModel.needsInitialModelSetup()
+        if needsModel { showModels() }
+        if CommandLine.arguments.contains("--request-accessibility-after-update") {
+            // Register this installed copy after the updater resets its permission.
+            // The updater opens System Settings, including when model setup is also needed.
+            Self.requestAccessibility()
+        } else if !needsModel && !AXIsProcessTrusted() {
+            Self.requestAccessibility()
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+        }
     }
     @objc private func showSettings() {
         if settingsController == nil { settingsController = SettingsController() }
@@ -65,10 +73,9 @@ import ApplicationServices
         if settingsController == nil { settingsController = SettingsController() }
         settingsController?.present(models: true)
     }
-    @objc private func permission() {
+    private static func requestAccessibility() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
     @objc private func translateClipboard() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let screen = NSScreen.main else { return }

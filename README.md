@@ -4,11 +4,11 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 
 选中文字，点击翻译入口，在浮窗中查看译文。默认使用本机模型，也可以分别为翻译和对话选择在线服务。
 
-[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.2.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
+[下载安装包](https://github.com/UndefinedWork/nous-translator/releases) · [本版更新说明](docs/releases/0.6.0-beta.3.md) · [问题反馈](https://github.com/UndefinedWork/nous-translator/issues)
 
 ## 下载与安装
 
-当前版本为 **0.6.0-beta.2 预览版（build 8）**。
+当前版本为 **0.6.0-beta.3 预览版（build 9）**。
 
 | 项目 | 要求与验证范围 |
 | --- | --- |
@@ -17,7 +17,7 @@ macOS 菜单栏划词翻译应用 · Selection translation for macOS
 | 本地模型 | 首次下载约 1.3 GB，需要能够访问 Hugging Face 及其下载服务的网络。权重不包含在安装包中。 |
 | 签名 | 当前是 ad-hoc 签名预览版，尚无 Developer ID 签名，也未通过 Apple 公证。 |
 
-1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.2-macOS-arm64.dmg`。
+1. 在 [GitHub Releases](https://github.com/UndefinedWork/nous-translator/releases) 下载 `Nous-Translator-0.6.0-beta.3-macOS-arm64.dmg`。
 2. 打开 DMG，将 **Nous Translator.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”打开 Nous Translator。它在屏幕顶部菜单栏显示翻译图标，不常驻 Dock。
 
@@ -71,7 +71,7 @@ General 中的 **Online translation → Fast** 默认对已确认支持的 OpenA
 
 从 Releases 下载新版，退出旧版后替换应用。预览版更新后，macOS 可能要求重新打开辅助功能允许开关。
 
-项目提供的本机更新工具 `scripts/install-update.py` 会备份并替换已有安装、验证签名，然后仅重置 `com.nous.translator` 的辅助功能授权，重新打开应用和权限页面。允许开关仍须用户操作；重置失败会明确报错。它不会重置其他应用，也不会清除模型、历史、偏好或 Keychain。该工具面向维护者的已有本机安装，普通下载用户无需运行源码脚本。
+项目提供的本机更新工具 `scripts/install-update.py` 会备份并替换已有安装、验证签名，然后仅重置 `com.nous.translator` 的辅助功能授权，重新打开应用和权限页面。新版启动并打开权限页面后，工具会删除本次临时备份。允许开关仍须用户操作；重置失败会明确报错。它不会重置其他应用，也不会清除模型、历史、偏好或 Keychain。该工具面向维护者的已有本机安装，普通下载用户无需运行源码脚本。
 
 ## 源码与发布
 
