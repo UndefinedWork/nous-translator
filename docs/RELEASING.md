@@ -17,6 +17,8 @@
 
 需要 Apple Silicon Mac、提供 macOS 26 或更新 SDK 的 Xcode 命令行工具、Git、Python 3、CMake，以及有目标仓库写入和 Release 发布权限的 GitHub CLI 登录。首次构建运行器需要访问其上游 Git 仓库；本地模型的实测另需已下载的模型。测试脚本不会调用收费模型服务。
 
+如果使用 macOS 27 SDK 时编译器提示缺少 `SwiftUIMacros`，请选择已安装的完整版 Xcode 后再运行下列命令。默认安装位置可在当前终端使用 `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`。
+
 每个版本先完成源代码变更、版本号和 `docs/releases/<release>.md` 更新说明，再审阅并提交。提交应包含本版完整变更和新增文件；之后 `git status --porcelain` 必须没有输出。不要把模型权重、个人偏好、历史、附件、日志、签名私钥、API Key 或临时构建产物提交到仓库。
 
 发布说明应写明签名状态、实际测试系统与尚未验证的范围。当前预览版仅在 macOS 27.3 实机验证，不能因为编译目标为 14.0 就宣称所有 macOS 14 及以上版本均已验收，也不能把划词回归测试描述成所有浏览器的端到端验收。
