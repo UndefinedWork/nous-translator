@@ -70,17 +70,17 @@ private actor RecognitionGate {
             })
         defer { store.stop() }
         func file(_ url: URL) -> ComposerFile { ComposerFile(name: url.lastPathComponent, path: url.path) }
-        func wait(_ label: String, until predicate: () -> Bool) async throws {
-            // Apple Vision may spend about 20 seconds compiling for the Neural Engine on a cold cache.
-            for _ in 0..<3000 {
+        func wait(_ label: String, timeout: Duration, until predicate: () -> Bool) async throws {
+            let deadline = ContinuousClock.now + timeout
+            while ContinuousClock.now < deadline {
                 if predicate() { return }
                 try await Task.sleep(nanoseconds: 20_000_000)
             }
             throw NSError(domain: "AttachmentFlowTests", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Timed out: " + label])
         }
-        func settled(_ id: UUID, in target: TaskStore) async throws -> Todo {
-            try await wait("attachment task completion: " + (target.tasks.first(where: { $0.id == id })?.summary ?? "missing task")) {
+        func settled(_ id: UUID, in target: TaskStore, timeout: Duration = .seconds(60)) async throws -> Todo {
+            try await wait("attachment task completion: " + (target.tasks.first(where: { $0.id == id })?.summary ?? "missing task"), timeout: timeout) {
                 target.tasks.first(where: { $0.id == id })?.status != "running"
             }
             return target.tasks.first(where: { $0.id == id })!
@@ -91,7 +91,8 @@ private actor RecognitionGate {
         // The standalone attachment marker must not be mistaken for a chat question.
         let imageID = store.add("[Attachment: sample.png]", files: [file(image)]) { _ in "" }!
         let imageStarted = ProcessInfo.processInfo.systemUptime
-        let imageTask = try await settled(imageID, in: store)
+        // On a cold system Vision may spend over a minute compiling the recognition model.
+        let imageTask = try await settled(imageID, in: store, timeout: .seconds(240))
         FileHandle.standardError.write(Data("Actual TaskStore OCR completed in \(ProcessInfo.processInfo.systemUptime - imageStarted) seconds\n".utf8))
         let imageReply = answer(imageTask)
         precondition(imageTask.status == "completed", imageTask.summary)
