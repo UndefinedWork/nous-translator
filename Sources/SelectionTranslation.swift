@@ -769,44 +769,18 @@ struct TranslationPanelView: View {
             .help(L10n.text("Drag corner to resize", zh: "拖动边角调整大小"))
     }
 
-    /// Tool row: 40pt tall, subtle target language switcher on leading edge + 36pt glass close button on trailing edge.
+    /// Tool row: 36pt clear Liquid Glass language capsule on leading edge, symmetric with 36pt close circle on trailing edge.
     private var header: some View {
         GlassGroup(spacing: 8) {
             HStack(spacing: 8) {
                 if !session.isRecognizingScreen {
-                    Menu {
-                        Button(L10n.text("Swap Direction", zh: "反转翻译方向")) {
-                            session.swapDirection()
-                        }
-                        Divider()
-                        ForEach(TranslationLanguage.allCases) { language in
-                            Button {
-                                session.retranslate(to: language)
-                            } label: {
-                                if language == session.target {
-                                    Label(language.shortName, systemImage: "checkmark")
-                                } else {
-                                    Text(language.shortName)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text(session.target.shortName)
-                                .font(.system(size: 12, weight: .medium))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(.white.opacity(0.88))
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .modifier(GlassSurface(shape: Capsule(), interactive: true))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help(L10n.text("Switch target language", zh: "切换目标语言"))
+                    GlassLanguageMenuButton(
+                        title: session.target.shortName,
+                        selected: session.target,
+                        help: L10n.text("Switch target language", zh: "切换目标语言"),
+                        onSwap: { session.swapDirection() },
+                        onSelect: { session.retranslate(to: $0) }
+                    )
                 }
                 Spacer(minLength: 0)
                 GlassSymbolButton(symbol: "xmark", size: 36, pointSize: 13, help: L10n.text("Close", zh: "关闭"), action: close)
@@ -1030,6 +1004,49 @@ private enum TranslationType {
     static func spacing(size: CGFloat, lineHeight: CGFloat) -> CGFloat {
         let font = NSFont.systemFont(ofSize: size)
         return max(0, lineHeight - (font.ascender - font.descender + font.leading))
+    }
+}
+
+/// "Button - Liquid Glass - Language": a 36pt clear Liquid Glass capsule showing only the target language name,
+/// optically symmetric with the 36pt circular close button on the trailing edge.
+private struct GlassLanguageMenuButton: View {
+    let title: String
+    let selected: TranslationLanguage
+    let help: String
+    let onSwap: () -> Void
+    let onSelect: (TranslationLanguage) -> Void
+    var body: some View {
+        Menu {
+            Button(L10n.text("Swap Direction", zh: "反转翻译方向"), action: onSwap)
+            Divider()
+            ForEach(TranslationLanguage.allCases) { language in
+                Button {
+                    onSelect(language)
+                } label: {
+                    if language == selected {
+                        Label(language.shortName, systemImage: "checkmark")
+                    } else {
+                        Text(language.shortName)
+                    }
+                }
+            }
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 36)
+                .frame(height: 36)
+                .contentShape(Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .modifier(GlassSurface(shape: Capsule(), interactive: true))
+        .fixedSize()
+        .help(help)
+        .accessibilityLabel(help + ": " + title)
     }
 }
 
