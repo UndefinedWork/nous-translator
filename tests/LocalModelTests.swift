@@ -149,7 +149,8 @@ ThreadingHTTPServer(('127.0.0.1', int(value('--port'))), Handler).serve_forever(
             _ = try await timeoutModel.stream(messages: [["role": "user", "content": "hello"]])
             fatalError("Expected startup timeout")
         } catch let error as ModelError {
-            precondition(error.localizedDescription.contains("超时"))
+            let desc = error.localizedDescription.lowercased()
+            precondition(desc.contains("超时") || desc.contains("timed out"), "Unexpected timeout error: \(error.localizedDescription)")
         }
         precondition(timeoutModel.state == .stopped)
         print("PASS: local-only prewarm gating, no conversation prewarm, truthful loading phases, shared startup, prompt cancellation, stop/retry race, live-stream retention, finite idle release, startup timeout cleanup")

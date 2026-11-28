@@ -34,6 +34,25 @@ extension TranslationLanguage {
 enum SelectionTranslationLayout {
     static let buttonSize = CGSize(width: 102, height: 32)
     static let panelSize = CGSize(width: 374, height: 528)
+    static let minPanelSize = CGSize(width: 340, height: 260)
+    static let maxPanelSize = CGSize(width: 640, height: 820)
+
+    /// Chooses a compact starting height for short selections so single words do not cover half the screen.
+    static func initialPanelSize(for source: String) -> CGSize {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = trimmed.components(separatedBy: .newlines).count
+        let height: CGFloat
+        if trimmed.isEmpty {
+            height = 360
+        } else if trimmed.count <= 80 && lines <= 2 {
+            height = 300
+        } else if trimmed.count <= 260 && lines <= 5 {
+            height = 380
+        } else {
+            height = panelSize.height
+        }
+        return CGSize(width: panelSize.width, height: height)
+    }
 
     /// Accessibility bounds use a top-left origin. Returns nil when the bounds lie away from both ends of
     /// the gesture: that selection predates it (e.g. a window was dragged).
@@ -60,12 +79,12 @@ enum SelectionTranslationLayout {
     }
 
     /// Below the selection when it fits, otherwise above, so the selected text stays visible.
-    static func panelOrigin(selection: CGRect, visible: CGRect, gap: CGFloat = 10) -> CGPoint {
-        var y = selection.minY - gap - panelSize.height
+    static func panelOrigin(selection: CGRect, visible: CGRect, size: CGSize = panelSize, gap: CGFloat = 10) -> CGPoint {
+        var y = selection.minY - gap - size.height
         if y < visible.minY { y = selection.maxY + gap }
-        let x = selection.midX - panelSize.width / 2
-        return CGPoint(x: clamp(x, visible.minX + 8, visible.maxX - panelSize.width - 8),
-                       y: clamp(y, visible.minY + 8, visible.maxY - panelSize.height - 8))
+        let x = selection.midX - size.width / 2
+        return CGPoint(x: clamp(x, visible.minX + 8, visible.maxX - size.width - 8),
+                       y: clamp(y, visible.minY + 8, visible.maxY - size.height - 8))
     }
 
     private static func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat { max(low, min(high, value)) }

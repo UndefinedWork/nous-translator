@@ -111,9 +111,14 @@ server.serve_forever()
 
         // Use the router's request overload: no saved provider, credential or paid endpoint is read.
         var rejectedStatus = false
+        var surfacedDetail = false
         do { _ = try await ModelRouter.remoteStream(request: request("status"), provider: .custom) }
-        catch let error as ModelError { rejectedStatus = error.localizedDescription.contains("HTTP 503") }
+        catch let error as ModelError {
+            rejectedStatus = error.localizedDescription.contains("HTTP 503")
+            surfacedDetail = error.localizedDescription.contains("fixture service unavailable")
+        }
         try check(rejectedStatus, "A non-200 response must surface its HTTP status")
+        try check(surfacedDetail, "A non-200 response should surface bounded server error diagnostics")
         try await assertClosed("status")
         print("PASS: real SSE [DONE], parse error, caller cancellation and HTTP error close live loopback responses without waiting for server completion")
     }

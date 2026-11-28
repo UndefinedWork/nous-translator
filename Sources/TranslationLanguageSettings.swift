@@ -23,28 +23,37 @@ struct TranslationLanguageSettings: View {
     }
     var body: some View {
         Section {
-            Picker("Language pair", selection: preset) {
+            Picker(L10n.text("Language pair", zh: "常用语言对"), selection: preset) {
                 ForEach(presets.indices, id: \.self) { index in Text(presets[index].0).tag(index) }
-                Text("Custom").tag(-1)
+                Text(L10n.text("Custom", zh: "自定义")).tag(-1)
             }
-            Picker("Primary language (A)", selection: Binding(get: { configuration.languageA }, set: { customPair = true; configuration.setLanguageA($0) })) {
+            Picker(L10n.text("Primary language (A)", zh: "主语言 (A)"), selection: Binding(get: { configuration.languageA }, set: { customPair = true; configuration.setLanguageA($0) })) {
                 ForEach(TranslationLanguage.allCases) { Text($0.name).tag($0) }
             }
-            Picker("Second language (B)", selection: Binding(get: { configuration.languageB }, set: { customPair = true; configuration.setLanguageB($0) })) {
+            Picker(L10n.text("Second language (B)", zh: "第二语言 (B)"), selection: Binding(get: { configuration.languageB }, set: { customPair = true; configuration.setLanguageB($0) })) {
                 ForEach(TranslationLanguage.allCases.filter { $0 != configuration.languageA }) { Text($0.name).tag($0) }
             }
-            Picker("Direction", selection: $configuration.mode) {
-                Text("Automatic (A ↔ B)").tag(TranslationDirectionMode.automatic)
+            Picker(L10n.text("Direction", zh: "翻译方向"), selection: $configuration.mode) {
+                Text(L10n.text("Automatic (A ↔ B)", zh: "自动双向 (A ↔ B)")).tag(TranslationDirectionMode.automatic)
                 Text("\(configuration.languageA.shortName) → \(configuration.languageB.shortName)").tag(TranslationDirectionMode.aToB)
                 Text("\(configuration.languageB.shortName) → \(configuration.languageA.shortName)").tag(TranslationDirectionMode.bToA)
             }
-            HStack { Spacer(); Button("Swap Languages") { customPair = true; configuration.swap() } }
-        } header: { Text("Translation Languages") } footer: {
+            HStack { Spacer(); Button(L10n.text("Swap Languages", zh: "互换语言 A / B")) { customPair = true; configuration.swap() } }
+        } header: { Text(L10n.text("Translation Languages", zh: "翻译语言")) } footer: {
             VStack(alignment: .leading, spacing: 5) {
                 Text(configuration.mode == .automatic
-                     ? "Detect the selection and translate between A and B. Other or unrecognized languages translate into \(configuration.languageA.name) (A)."
-                     : "Always translate into \(configuration.mode == .aToB ? configuration.languageB.name : configuration.languageA.name), regardless of the detected source language.")
-                Text("Applies to new selection and clipboard translations. Short or mixed text may be detected incorrectly. Language support and quality depend on the model selected in Models.")
+                     ? L10n.text(
+                        "Detect the selection and translate between A and B. Other or unrecognized languages translate into \(configuration.languageA.name) (A).",
+                        zh: "自动识别选区并在 A 与 B 之间互译；第三语言或无法识别的文本默认译向主语言 \(configuration.languageA.shortName) (A)。"
+                     )
+                     : L10n.text(
+                        "Always translate into \(configuration.mode == .aToB ? configuration.languageB.name : configuration.languageA.name), regardless of the detected source language.",
+                        zh: "始终翻译为 \(configuration.mode == .aToB ? configuration.languageB.shortName : configuration.languageA.shortName)，不受源语言识别结果影响。"
+                     ))
+                Text(L10n.text(
+                    "Applies to new selection and clipboard translations. Short or mixed text may be detected incorrectly. Language support and quality depend on the model selected in Models.",
+                    zh: "对新的划词与剪贴板翻译生效。短词或混合文本可能识别不准；实际语言能力取决于所选模型。"
+                ))
             }
         }
         .onChange(of: configuration) { _, value in value.save() }

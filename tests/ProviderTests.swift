@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
 import SwiftUI
+#if canImport(NousCore)
+@testable import NousCore
+#endif
 
 @main struct ProviderTests {
     @MainActor static func main() throws {

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Darwin
 
 enum SelectionCopyCommand {
     case enabled(AXUIElement), disabled, unavailable
@@ -11,7 +12,19 @@ actor SelectionAccessibilityReader {
     private var manualAccessibility = Set<pid_t>()
     private var warmupUntil: [pid_t: TimeInterval] = [:]
     private var retryActivationAfter: [pid_t: TimeInterval] = [:]
+    private var lastPrune: TimeInterval = 0
     private var readTargetPID: pid_t?
+
+    private func pruneDeadProcessesIfNeeded(now: TimeInterval) {
+        guard now - lastPrune >= 60 else { return }
+        lastPrune = now
+        func isDead(_ pid: pid_t) -> Bool {
+            kill(pid, 0) != 0 && errno == ESRCH
+        }
+        manualAccessibility = manualAccessibility.filter { !isDead($0) }
+        warmupUntil = warmupUntil.filter { $0.value > now && !isDead($0.key) }
+        retryActivationAfter = retryActivationAfter.filter { $0.value > now && !isDead($0.key) }
+    }
 
     func prepare(pid: pid_t, targetOnly: Bool = false) {
         readTargetPID = targetOnly ? pid : nil
@@ -27,12 +40,13 @@ actor SelectionAccessibilityReader {
     }
 
     private func application(_ pid: pid_t) -> AXUIElement {
+        let now = ProcessInfo.processInfo.systemUptime
+        pruneDeadProcessesIfNeeded(now: now)
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
         // Reading AXRole wakes Chromium's native AX support. Electron also supports
         // AXManualAccessibility, but Nous Browser/Chromium does not expose that attribute.
         _ = attribute(app, kAXRoleAttribute)
-        let now = ProcessInfo.processInfo.systemUptime
         if !manualAccessibility.contains(pid), now >= retryActivationAfter[pid, default: 0] {
             if AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success {
                 manualAccessibility.insert(pid)
@@ -58,10 +72,12 @@ actor SelectionAccessibilityReader {
     func selection(pid: pid_t, down: CGPoint, up: CGPoint, primaryHeight: CGFloat, targetOnly: Bool = false) -> SelectionSnapshot {
         readTargetPID = targetOnly ? pid : nil
         defer { readTargetPID = nil }
+        let now = ProcessInfo.processInfo.systemUptime
+        pruneDeadProcessesIfNeeded(now: now)
         // Targeted browser activation already ran once after the gesture's access check.
         let app = targetOnly ? AXUIElementCreateApplication(pid) : application(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
-        let deadline = ProcessInfo.processInfo.systemUptime + 0.3
+        let deadline = now + 0.3
         var rawFocused: CFTypeRef?
         let focusedStatus = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &rawFocused)
         if targetOnly, focusedStatus != .success && focusedStatus != .noValue && focusedStatus != .attributeUnsupported {

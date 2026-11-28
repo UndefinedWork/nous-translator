@@ -3,6 +3,9 @@ import AppKit
 import CoreText
 import ImageIO
 import UniformTypeIdentifiers
+#if canImport(NousCore)
+@testable import NousCore
+#endif
 
 private actor RequestRecorder {
     private(set) var requests: [URLRequest] = []
@@ -165,12 +168,14 @@ private actor RecognitionGate {
         precondition(clearedDraft.files.isEmpty, "Clearing the draft cancels a queued image import and prevents late reinsertion")
 
         // Exercise Apple's real OCR implementation on a generated, non-private image.
-        for fast in [false, true] {
-            let local = try await ImageRecognition.recognize(url: image,
-                configuration: ImageRecognitionConfiguration(fastOCR: fast),
-                transport: { _, _ in fatalError("Apple Vision must never invoke an online transport") },
-                keyReader: { _ in fatalError("Apple Vision must never read an API key") }, cache: nil)
-            precondition(local.lowercased().contains("hello") && local.contains("42"), "Real Vision OCR must work in both accurate and fast modes")
+        if !CommandLine.arguments.contains("--skip-vision") {
+            for fast in [false, true] {
+                let local = try await ImageRecognition.recognize(url: image,
+                    configuration: ImageRecognitionConfiguration(fastOCR: fast),
+                    transport: { _, _ in fatalError("Apple Vision must never invoke an online transport") },
+                    keyReader: { _ in fatalError("Apple Vision must never read an API key") }, cache: nil)
+                precondition(local.lowercased().contains("hello") && local.contains("42"), "Real Vision OCR must work in both accurate and fast modes")
+            }
         }
         print("PASS: independent image settings, safe legacy migration, image_url payload/limits, endpoint isolation, cancellation, bounded cache, errors, local PDF/text, background image paste, and real Vision accurate/fast OCR")
     }

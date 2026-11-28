@@ -1,5 +1,8 @@
 import Foundation
 import AppKit
+#if canImport(NousCore)
+@testable import NousCore
+#endif
 
 @main struct FirstLaunchTests {
     @MainActor static func main() async throws {
@@ -77,13 +80,14 @@ server.serve_forever()
         }
         let good = download("ok")
         precondition(!good.installed)
-        good.start(); try await waitFor { !good.running }
-        precondition(good.installed && good.progress == 1 && good.status.hasPrefix("Download complete"), "A first download creates its destination and becomes usable")
+        L10n.withOverride(.english) { good.start() }
+        try await waitFor { !good.running }
+        precondition(good.installed && good.progress == 1 && (good.status.hasPrefix("Download complete") || good.status.hasPrefix("下载完成")), "A first download creates its destination and becomes usable: \(good.status)")
         let expected = try Data(contentsOf: destination)
         for endpoint in ["missing", "bad", "short"] {
             let failed = download(endpoint)
             failed.start(); try await waitFor { !failed.running }
-            precondition(failed.status.hasPrefix("Download failed:"), "HTTP errors, invalid content and incomplete responses must fail")
+            precondition(failed.status.hasPrefix("Download failed:") || failed.status.hasPrefix("下载失败："), "HTTP errors, invalid content and incomplete responses must fail: \(failed.status)")
             let preserved = try Data(contentsOf: destination)
             precondition(preserved == expected, "A failed download preserves the installed model")
         }
@@ -91,11 +95,23 @@ server.serve_forever()
         cancelled.start(); try await waitFor { (cancelled.progress ?? 0) > 0 }
         precondition(cancelled.running, "A real download reports progress before completion")
         cancelled.cancel(); try await waitFor { !cancelled.running }
-        precondition(cancelled.status.hasPrefix("Download cancelled"))
+        precondition(cancelled.status.hasPrefix("Download cancelled") || cancelled.status.hasPrefix("下载已取消"), "Unexpected cancel status: \(cancelled.status)")
         let preserved = try Data(contentsOf: destination)
         precondition(preserved == expected, "Cancellation preserves the installed model")
         cancelled.start(); try await waitFor { !cancelled.running }
-        precondition(cancelled.status.hasPrefix("Download complete"), "A cancelled download can be retried")
+        precondition(cancelled.status.hasPrefix("Download complete") || cancelled.status.hasPrefix("下载完成"), "A cancelled download can be retried: \(cancelled.status)")
+        // SHA-256 verification: wrong checksum fails and preserves the installed model; matching checksum succeeds.
+        let expectedHash = try await ModelDownload.sha256(of: destination)
+        let badHash = download("ok")
+        badHash.start(from: URL(string: "http://127.0.0.1:\(port)/ok")!, expectedSHA256: String(repeating: "0", count: 64))
+        try await waitFor { !badHash.running }
+        precondition(badHash.status.hasPrefix("Download failed:") || badHash.status.hasPrefix("下载失败："), "Mismatched SHA-256 must fail")
+        let afterBadHash = try Data(contentsOf: destination)
+        precondition(afterBadHash == expected, "Failed SHA-256 verification must preserve installed model")
+        let goodHash = download("ok")
+        goodHash.start(from: URL(string: "http://127.0.0.1:\(port)/ok")!, expectedSHA256: expectedHash)
+        try await waitFor { !goodHash.running }
+        precondition(goodHash.status.hasPrefix("Download complete") || goodHash.status.hasPrefix("下载完成"), "Matching SHA-256 must succeed")
         try Data("broken model".utf8).write(to: destination)
         let repair = download("ok")
         precondition(!repair.installed, "A corrupt existing file is not shown as installed")

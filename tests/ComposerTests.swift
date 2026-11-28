@@ -1,5 +1,8 @@
 import AppKit
 import SwiftUI
+#if canImport(NousCore)
+@testable import NousCore
+#endif
 
 @main struct ComposerTests {
     @MainActor static func main() {

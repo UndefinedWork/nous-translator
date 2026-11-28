@@ -21,7 +21,7 @@ enum MessageTextLayout {
     }
 }
 
-@MainActor private enum MessageTextCache {
+@MainActor enum MessageTextCache {
     final class Entry: NSObject {
         let blocks: [AttributedString]
         init(_ blocks: [AttributedString]) { self.blocks = blocks }
@@ -32,14 +32,21 @@ enum MessageTextLayout {
         cache.countLimit = 128
         return cache
     }()
-    static func blocks(_ text: String, markdown: Bool) -> [AttributedString] {
-        let key = ((markdown ? "md:" : "plain:") + text) as NSString
-        if let entry = cache.object(forKey: key) { return entry.blocks }
-        let blocks = MessageTextLayout.blocks(text).map { block in
+    static func blocks(_ text: String, markdown: Bool, useCache: Bool = true) -> [AttributedString] {
+        if useCache {
+            let key = ((markdown ? "md:" : "plain:") + text) as NSString
+            if let entry = cache.object(forKey: key) { return entry.blocks }
+            let blocks = renderBlocks(text, markdown: markdown)
+            cache.setObject(Entry(blocks), forKey: key, cost: text.utf16.count * 4)
+            return blocks
+        }
+        // Streaming responses update every 50ms; bypass NSCache to avoid evicting completed messages.
+        return renderBlocks(text, markdown: markdown)
+    }
+    private static func renderBlocks(_ text: String, markdown: Bool) -> [AttributedString] {
+        MessageTextLayout.blocks(text).map { block in
             markdown ? ((try? AttributedString(markdown: block, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(block)) : AttributedString(block)
         }
-        cache.setObject(Entry(blocks), forKey: key, cost: text.utf16.count * 4)
-        return blocks
     }
 }
 
@@ -47,8 +54,9 @@ struct MessageText: View {
     let text: String
     var markdown = true
     var copyText: String? = nil
+    var useCache = true
     var body: some View {
-        let blocks = MessageTextCache.blocks(text, markdown: markdown)
+        let blocks = MessageTextCache.blocks(text, markdown: markdown, useCache: useCache)
         Group {
             if blocks.count <= 1 {
                 Text(blocks.first ?? AttributedString("")).textSelection(.enabled)
@@ -62,7 +70,7 @@ struct MessageText: View {
             }
         }
         .contextMenu {
-            Button("Copy full message") {
+            Button(L10n.text("Copy full message", zh: "复制完整内容")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(copyText ?? text, forType: .string)
             }

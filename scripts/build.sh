@@ -16,7 +16,8 @@ app="$stage/Nous Translator.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/Runtime"
 xcrun swiftc -module-cache-path "${TMPDIR:-/tmp}/nous-swift-module-cache" \
     -target arm64-apple-macos14.0 -swift-version 5 -O -parse-as-library \
-    Sources/*.swift -o "$app/Contents/MacOS/NousTranslator" -framework SwiftUI -framework AppKit
+    Sources/*.swift -o "$app/Contents/MacOS/NousTranslator" \
+    -framework SwiftUI -framework AppKit -framework Carbon -framework AVFoundation
 cp -R Resources/Licenses "$app/Contents/Resources/"
 cp Resources/AppIcon.icns "$app/Contents/Resources/"
 cp THIRD_PARTY_NOTICES.md PRIVACY.md SOURCE_NOTICE.md "$app/Contents/Resources/"

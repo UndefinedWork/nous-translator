@@ -32,21 +32,56 @@ struct CopyableReply: View {
     let text: String
     var canCopy = true
     var markdown = true
+    var useCache = true
+    var speakID: String? = nil
+    var speakLanguage: TranslationLanguage? = nil
+    var onRetranslate: (() -> Void)? = nil
+    @ObservedObject private var speech = SpeechPlayer.shared
     @State private var hovered = false
     @State private var copied = false
+    private var isSpeaking: Bool { speakID != nil && speech.activeID == speakID }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MessageText(text: text, markdown: markdown).frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
-                copied = true
-            } label: {
-                CopyGlyph(copied: copied)
+            MessageText(text: text, markdown: markdown, useCache: useCache).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                Button {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+                    copied = true
+                } label: {
+                    CopyGlyph(copied: copied)
+                }
+                .buttonStyle(.plain).frame(width: 24, height: 24)
+                .help(copied ? L10n.text("Copied", zh: "已复制") : L10n.text("Copy", zh: "复制"))
+                .accessibilityLabel(L10n.text("Copy response", zh: "复制回复"))
+
+                if let speakID {
+                    Button {
+                        speech.toggle(id: speakID, text: text, language: speakLanguage)
+                    } label: {
+                        Image(systemName: isSpeaking ? "stop.circle.fill" : "speaker.wave.2")
+                            .font(.system(size: 13))
+                            .foregroundStyle(isSpeaking ? .primary : .secondary)
+                            .frame(width: 24, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(isSpeaking ? L10n.text("Stop speaking", zh: "停止朗读") : L10n.text("Speak", zh: "朗读"))
+                    .accessibilityLabel(isSpeaking ? L10n.text("Stop speaking", zh: "停止朗读") : L10n.text("Speak text", zh: "朗读文本"))
+                }
+
+                if let onRetranslate {
+                    Button(action: onRetranslate) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.text("Retranslate (⌘R)", zh: "重新翻译 (⌘R)"))
+                    .accessibilityLabel(L10n.text("Retranslate", zh: "重新翻译"))
+                }
             }
-            .buttonStyle(.plain).frame(width: 24, height: 24)
-            .opacity(canCopy && (hovered || copied) ? 1 : 0)
-            .allowsHitTesting(canCopy && (hovered || copied)).accessibilityHidden(!canCopy)
-            .help(copied ? "Copied" : "Copy").accessibilityLabel("Copy response")
+            .opacity(canCopy && (hovered || copied || isSpeaking) ? 1 : 0)
+            .allowsHitTesting(canCopy && (hovered || copied || isSpeaking)).accessibilityHidden(!canCopy)
         }.onHover { hovered = $0 }
             .task(id: copied) {
                 guard copied else { return }

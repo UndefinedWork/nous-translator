@@ -30,18 +30,3 @@ private struct HoverButtonLabel: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
-private struct NativeHoverFeedback: ViewModifier {
-    @State private var hovering = false
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    func body(content: Content) -> some View {
-        content.brightness(hovering && enabled ? -0.055 : 0)
-            .scaleEffect(hovering && enabled && !reduceMotion ? 1.025 : 1)
-            .onHover { hovering = $0 && enabled }
-            .onChange(of: enabled) { _, value in if !value { hovering = false } }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovering)
-    }
-}
-extension View {
-    func nativeHoverFeedback() -> some View { modifier(NativeHoverFeedback()) }
-}

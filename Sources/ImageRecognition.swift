@@ -34,12 +34,14 @@ struct ImageRecognitionConfiguration: Equatable {
 
     func validate() throws {
         guard Self.providers.contains(provider) else {
-            throw ModelError.message("Choose Apple Vision, OpenAI, or a Custom API that accepts images.")
+            throw ModelError.message(L10n.text("Choose Apple Vision, OpenAI, or a Custom API that accepts images.",
+                                               zh: "请选择 Apple Vision、OpenAI 或支持图片的自定义 API。"))
         }
         if provider != .local {
             _ = try profile.endpoint()
             guard !profile.model.isEmpty else {
-                throw ModelError.message("Enter an image-capable model ID in Settings → Images. Your translation and conversation model IDs are not used here.")
+                throw ModelError.message(L10n.text("Enter an image-capable model ID in Settings → Images. Your translation and conversation model IDs are not used here.",
+                                                   zh: "请在 Settings → Images 中填写支持图片的模型 ID（不会复用翻译或对话模型 ID）。"))
             }
         }
     }
@@ -143,7 +145,8 @@ enum ImageRecognition {
             // Read the selected endpoint's key only when the user actually submits an image.
             let key = try keyReader(configuration.profile.account).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else {
-                throw ModelError.message("Save an API key for this image provider and address in Settings → Images, or choose Apple Vision for local recognition.")
+                throw ModelError.message(L10n.text("Save an API key for this image provider and address in Settings → Images, or choose Apple Vision for local recognition.",
+                                                   zh: "请在 Settings → Images 中为当前服务地址保存 API Key，或切换为本机 Apple Vision。"))
             }
             let request = try await worker {
                 try makeRequest(url: url, configuration: configuration, key: key)
@@ -166,7 +169,9 @@ enum ImageRecognition {
     /// Exposed internally for request fixture tests; callers must keep decoding off the main actor.
     static func makeRequest(url: URL, configuration: ImageRecognitionConfiguration, key: String) throws -> URLRequest {
         try configuration.validate()
-        guard configuration.provider != .local else { throw ModelError.message("Apple Vision does not use an online image request.") }
+        guard configuration.provider != .local else {
+            throw ModelError.message(L10n.text("Apple Vision does not use an online image request.", zh: "Apple Vision 不使用在线图片请求。"))
+        }
         let image = try uploadImage(url: url)
         let messages: [[String: Any]] = [
             ["role": "system", "content": """
@@ -187,8 +192,14 @@ enum ImageRecognition {
 
     static func validatedText(_ raw: String) throws -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw ModelError.message("No readable text was found in the image. Try a clearer image or another image recognition model.") }
-        guard text.count <= maximumTextCharacters else { throw ModelError.message("The image contains too much text. Crop it or send it in smaller parts (up to 16000 characters).") }
+        guard !text.isEmpty else {
+            throw ModelError.message(L10n.text("No readable text was found in the image. Try a clearer image or another image recognition model.",
+                                               zh: "图片中未识别到可读文字，请尝试更清晰的图片或更换识别模型。"))
+        }
+        guard text.count <= maximumTextCharacters else {
+            throw ModelError.message(L10n.text("The image contains too much text. Crop it or send it in smaller parts (up to 16000 characters).",
+                                               zh: "图片文字过多，请裁剪或分段发送（最多 16000 字）。"))
+        }
         return text
     }
 
@@ -212,7 +223,8 @@ enum ImageRecognition {
         var fresh = url; fresh.removeAllCachedResourceValues()
         let info = try fresh.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard info.isRegularFile == true, let size = info.fileSize, size > 0, size <= maximumInputBytes else {
-            throw ModelError.message("Choose a readable image or document no larger than 50 MB.")
+            throw ModelError.message(L10n.text("Choose a readable image or document no larger than 50 MB.",
+                                               zh: "请选择不超过 50 MB 的可读图片或文档。"))
         }
         let file = try FileHandle(forReadingFrom: fresh)
         defer { try? file.close() }
@@ -220,7 +232,9 @@ enum ImageRecognition {
         while let part = try file.read(upToCount: 1024 * 1024), !part.isEmpty {
             try Task.checkCancellation()
             total += part.count
-            guard total <= maximumInputBytes else { throw ModelError.message("The file exceeds the 50 MB limit.") }
+            guard total <= maximumInputBytes else {
+                throw ModelError.message(L10n.text("The file exceeds the 50 MB limit.", zh: "文件大小超过 50 MB 限制。"))
+            }
             hash.update(data: part)
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
@@ -246,7 +260,8 @@ enum ImageRecognition {
                 kCGImageSourceThumbnailMaxPixelSize: maximumDimension,
                 kCGImageSourceShouldCacheImmediately: true
               ] as CFDictionary) else {
-            throw ModelError.message("This image could not be read, or its pixel dimensions are too large. Try a smaller PNG, JPEG, HEIC, or TIFF image.")
+            throw ModelError.message(L10n.text("This image could not be read, or its pixel dimensions are too large. Try a smaller PNG, JPEG, HEIC, or TIFF image.",
+                                               zh: "无法读取该图片或像素尺寸过大，请换用较小的 PNG、JPEG、HEIC 或 TIFF 图片。"))
         }
         try Task.checkCancellation()
         return image
@@ -258,11 +273,15 @@ enum ImageRecognition {
             let image = try thumbnail(url: url, maximumDimension: maximumDimension)
             guard let context = CGContext(data: nil, width: image.width, height: image.height,
                 bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw ModelError.message("The image could not be prepared for recognition.") }
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+                throw ModelError.message(L10n.text("The image could not be prepared for recognition.", zh: "无法处理该图片以进行识别。"))
+            }
             context.setFillColor(CGColor(gray: 1, alpha: 1))
             context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-            guard let flattened = context.makeImage() else { throw ModelError.message("The image could not be prepared for recognition.") }
+            guard let flattened = context.makeImage() else {
+                throw ModelError.message(L10n.text("The image could not be prepared for recognition.", zh: "无法处理该图片以进行识别。"))
+            }
             for quality in [0.85, 0.65, 0.45] {
                 try Task.checkCancellation()
                 let data = NSMutableData()
@@ -273,7 +292,8 @@ enum ImageRecognition {
             }
             maximumDimension = max(256, maximumDimension * 3 / 4)
         }
-        throw ModelError.message("The image is too large to send. Crop it or choose a smaller image.")
+        throw ModelError.message(L10n.text("The image is too large to send. Crop it or choose a smaller image.",
+                                           zh: "图片体积过大无法发送，请裁剪或选择较小图片。"))
     }
 
     static func worker<Value>(_ operation: @escaping @Sendable () throws -> Value) async throws -> Value {

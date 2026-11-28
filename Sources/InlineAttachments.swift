@@ -36,7 +36,8 @@ enum AttachmentTextExtractor {
             let text: String
             if kind == "pdf" {
                 guard let document = PDFDocument(url: url), !document.isLocked else {
-                    throw ModelError.message("This PDF could not be read or requires a password.")
+                    throw ModelError.message(L10n.text("This PDF could not be read or requires a password.",
+                                                       zh: "无法读取此 PDF，或文件受密码保护。"))
                 }
                 var pages: [String] = [], characters = 0
                 for index in 0..<document.pageCount {
@@ -44,7 +45,8 @@ enum AttachmentTextExtractor {
                     let page = document.page(at: index)?.string ?? ""
                     characters += page.count
                     guard characters <= ImageRecognition.maximumTextCharacters else {
-                        throw ModelError.message("The PDF contains too much text. Send fewer pages (up to 16000 characters).")
+                        throw ModelError.message(L10n.text("The PDF contains too much text. Send fewer pages (up to 16000 characters).",
+                                                           zh: "PDF 文字过多，请发送较少页数（最多 16000 字）。"))
                     }
                     if !page.isEmpty { pages.append(page) }
                 }
@@ -56,11 +58,14 @@ enum AttachmentTextExtractor {
             let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !result.isEmpty else {
                 throw ModelError.message(kind == "pdf"
-                    ? "This PDF has no readable text layer. Attach an image of the page for image recognition."
-                    : "No readable text was found in the attachment.")
+                    ? L10n.text("This PDF has no readable text layer. Attach an image of the page for image recognition.",
+                                zh: "该 PDF 无可提取文本层，请截取页面图片进行图片识别。")
+                    : L10n.text("No readable text was found in the attachment.",
+                                zh: "附件中未找到可读文字。"))
             }
             guard result.count <= ImageRecognition.maximumTextCharacters else {
-                throw ModelError.message("The attachment contains too much text. Send it in smaller parts (up to 16000 characters).")
+                throw ModelError.message(L10n.text("The attachment contains too much text. Send it in smaller parts (up to 16000 characters).",
+                                                   zh: "附件文字过多，请分段发送（最多 16000 字）。"))
             }
             return result
         }
@@ -72,15 +77,25 @@ enum AttachmentTextExtractor {
 }
 final class FileAttachment: NSTextAttachment {
     let file: ComposerFile
-    init(file: ComposerFile) {
+    init(file: ComposerFile, onThumbnailReady: (@MainActor () -> Void)? = nil) {
         self.file = file
         super.init(data: nil, ofType: nil)
         let chip = FileChip(textCell: file.name)
-        if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: file.path) as CFURL, nil),
-           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 48, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) {
-            chip.thumbnail = NSImage(cgImage: image, size: NSSize(width: 20, height: 20))
-        }
         attachmentCell = chip
+        let path = file.path
+        Task { @MainActor [weak chip] in
+            let image: CGImage? = await Task.detached(priority: .userInitiated) {
+                guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 48,
+                    kCGImageSourceCreateThumbnailWithTransform: true
+                ] as CFDictionary)
+            }.value
+            guard let image, let chip else { return }
+            chip.thumbnail = NSImage(cgImage: image, size: NSSize(width: 20, height: 20))
+            onThumbnailReady?()
+        }
     }
     required init?(coder: NSCoder) { nil }
 }
@@ -116,7 +131,7 @@ final class FileChip: NSTextAttachmentCell {
     var showsPlaceholder: Bool { content.length == 0 && !isComposing }
     weak var hitSurface: NSView?
     weak var editor: AttachmentTextView?
-    private let staging = FileManager.default.temporaryDirectory.appendingPathComponent("TelosDraft-" + UUID().uuidString)
+    private let staging = FileManager.default.temporaryDirectory.appendingPathComponent("NousDraft-" + UUID().uuidString)
     var compactLayoutHeight: CGFloat {
         if let cachedCompactHeight { return cachedCompactHeight }
         // Only measure enough text to decide the compact/expanded state.
@@ -154,7 +169,8 @@ final class FileChip: NSTextAttachmentCell {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true; panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.title = "Attach files"; panel.prompt = "Attach"
+        panel.title = L10n.text("Attach files", zh: "添加附件")
+        panel.prompt = L10n.text("Attach", zh: "添加")
         panel.level = .modalPanel
         filePicker = panel
         NSApp.activate(ignoringOtherApps: true)
@@ -168,9 +184,26 @@ final class FileChip: NSTextAttachmentCell {
         panel.makeKeyAndOrderFront(nil)
     }
 
+    private func appendAttachments(_ stagedFiles: [ComposerFile]) {
+        let value = NSMutableAttributedString(string: "")
+        for file in stagedFiles {
+            let attachment = FileAttachment(file: file) { [weak self] in
+                self?.editor?.needsDisplay = true
+            }
+            value.append(NSAttributedString(attachment: attachment))
+        }
+        if let editor {
+            editor.insertText(value, replacementRange: editor.selectedRange())
+            editor.window?.makeFirstResponder(editor)
+        } else {
+            let updated = NSMutableAttributedString(attributedString: content)
+            updated.append(value); content = updated
+        }
+    }
+
     func insert(_ urls: [URL]) {
         do {
-            let value = NSMutableAttributedString(string: "")
+            var stagedFiles: [ComposerFile] = []
             for url in urls {
                 let scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 let info = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
@@ -179,39 +212,49 @@ final class FileChip: NSTextAttachmentCell {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 let copy = dir.appendingPathComponent(url.lastPathComponent)
                 try FileManager.default.copyItem(at: url, to: copy)
-                value.append(NSAttributedString(attachment: FileAttachment(file: ComposerFile(name: url.lastPathComponent, path: copy.path))))
+                stagedFiles.append(ComposerFile(name: url.lastPathComponent, path: copy.path))
             }
-            if let editor {
-                editor.insertText(value, replacementRange: editor.selectedRange())
-                editor.window?.makeFirstResponder(editor)
-            } else {
-                let updated = NSMutableAttributedString(attributedString: content)
-                updated.append(value); content = updated
-            }
-        } catch { self.error = "Could not attach file (maximum 50 MB): \(error.localizedDescription)" }
+            appendAttachments(stagedFiles)
+        } catch {
+            self.error = L10n.text("Could not attach file (maximum 50 MB): \(error.localizedDescription)",
+                                   zh: "无法添加附件（最大 50 MB）：\(error.localizedDescription)")
+        }
     }
+
     func paste(_ board: NSPasteboard) -> Bool {
         if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty { insert(urls); return true }
-        // Preserve encoded pasteboard bytes; converting NSImage → TIFF → PNG here used
-        // to decode and re-encode the full screenshot on the editor's main thread.
+        // Preserve encoded pasteboard bytes directly into staging (avoiding a double copy on disk
+        // and keeping decoding off the editor's main thread).
         let imageTypes = [.png, .tiff] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }
         for type in imageTypes where board.types?.contains(type) == true {
             guard let data = board.data(forType: type) else { continue }
             guard data.count <= ImageRecognition.maximumInputBytes else {
-                error = "Could not attach image (maximum 50 MB)."; return true
+                error = L10n.text("Could not attach image (maximum 50 MB).", zh: "无法添加图片（最大 50 MB）。"); return true
             }
             let id = UUID(), generation = importGeneration
             let suffix = UTType(type.rawValue)?.preferredFilenameExtension ?? "image"
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Image-\(id)." + suffix)
+            let fileName = "Image-\(id)." + suffix
+            let targetDir = staging.appendingPathComponent(id.uuidString)
+            let targetURL = targetDir.appendingPathComponent(fileName)
             imageImports[id] = Task { [weak self] in
-                defer { try? FileManager.default.removeItem(at: url); self?.imageImports.removeValue(forKey: id) }
+                defer { self?.imageImports.removeValue(forKey: id) }
                 do {
-                    try await ImageRecognition.worker { try data.write(to: url, options: .atomic) }
+                    try await ImageRecognition.worker {
+                        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+                        try data.write(to: targetURL, options: .atomic)
+                    }
                     try Task.checkCancellation()
-                    guard let self, self.importGeneration == generation else { return }
-                    self.insert([url])
+                    guard let self, self.importGeneration == generation else {
+                        try? FileManager.default.removeItem(at: targetDir)
+                        return
+                    }
+                    self.appendAttachments([ComposerFile(name: fileName, path: targetURL.path)])
                 } catch is CancellationError {
-                } catch { self?.error = error.localizedDescription }
+                    try? FileManager.default.removeItem(at: targetDir)
+                } catch {
+                    try? FileManager.default.removeItem(at: targetDir)
+                    self?.error = error.localizedDescription
+                }
             }
             return true
         }
@@ -341,7 +384,6 @@ final class AttachmentTextView: NSTextView {
         beginPointerEditing(event)
         defer {
             draft?.isPressed = false
-
         }
         let p = convert(event.locationInWindow, from: nil); var target: NSRange?
         attachments { cell, range, rect in if cell.hovered && rect.contains(p) && p.x < rect.minX + 26 { target = range } }
@@ -395,7 +437,7 @@ struct AttachmentInput: View {
             .frame(height: draft.editorHeight)
             .transaction { $0.animation = nil }
             .overlay(alignment: .topLeading) { if draft.showsPlaceholder { Text(placeholder).font(.system(size: 14)).foregroundStyle(.secondary).frame(height: 20, alignment: .center).allowsHitTesting(false) } }
-            .alert("Attachment", isPresented: Binding(get: { draft.error != nil }, set: { if !$0 { draft.error = nil } })) { Button("OK") { draft.error = nil } } message: { Text(draft.error ?? "") }
+            .alert(L10n.text("Attachment", zh: "附件"), isPresented: Binding(get: { draft.error != nil }, set: { if !$0 { draft.error = nil } })) { Button(L10n.text("OK", zh: "确定")) { draft.error = nil } } message: { Text(draft.error ?? "") }
             .onReceive(NotificationCenter.default.publisher(for: .init(identifier == "newTaskField" ? "TelosNewTask" : "TelosFocusAsk"))) { _ in draft.editor?.window?.makeFirstResponder(draft.editor) }
     }
 }

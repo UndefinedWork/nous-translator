@@ -3,6 +3,9 @@ import AppKit
 import CoreText
 import ImageIO
 import UniformTypeIdentifiers
+#if canImport(NousCore)
+@testable import NousCore
+#endif
 
 private final class ForbiddenExternalAccess: @unchecked Sendable {
     private let lock = NSLock()
@@ -87,19 +90,22 @@ private actor RecognitionGate {
         }
         func answer(_ task: Todo) -> ChatMessage { task.messages.last(where: { $0.role == "assistant" })! }
 
-        // Actual Apple Vision OCR runs through the same TaskStore extraction pipeline.
-        // The standalone attachment marker must not be mistaken for a chat question.
-        let imageID = store.add("[Attachment: sample.png]", files: [file(image)]) { _ in "" }!
-        let imageStarted = ProcessInfo.processInfo.systemUptime
-        // On a cold system Vision may spend over a minute compiling the recognition model.
-        let imageTask = try await settled(imageID, in: store, timeout: .seconds(240))
-        FileHandle.standardError.write(Data("Actual TaskStore OCR completed in \(ProcessInfo.processInfo.systemUptime - imageStarted) seconds\n".utf8))
-        let imageReply = answer(imageTask)
-        precondition(imageTask.status == "completed", imageTask.summary)
-        precondition(!imageReply.pending && imageReply.text.lowercased().contains("nous translator"), imageReply.text)
-        precondition(imageReply.text.lowercased().contains("hello local ocr"), imageReply.text)
-        precondition(imageTask.messages.first?.text == "", "Attachment markers are not a conversation question")
-        precondition(validationCalls == 0 && external.attempts == 0, "Recognition-only must not require conversation or external services")
+        let skipVision = CommandLine.arguments.contains("--skip-vision")
+        if !skipVision {
+            // Actual Apple Vision OCR runs through the same TaskStore extraction pipeline.
+            // The standalone attachment marker must not be mistaken for a chat question.
+            let imageID = store.add("[Attachment: sample.png]", files: [file(image)]) { _ in "" }!
+            let imageStarted = ProcessInfo.processInfo.systemUptime
+            // On a cold system Vision may spend over a minute compiling the recognition model.
+            let imageTask = try await settled(imageID, in: store, timeout: .seconds(240))
+            FileHandle.standardError.write(Data("Actual TaskStore OCR completed in \(ProcessInfo.processInfo.systemUptime - imageStarted) seconds\n".utf8))
+            let imageReply = answer(imageTask)
+            precondition(imageTask.status == "completed", imageTask.summary)
+            precondition(!imageReply.pending && imageReply.text.lowercased().contains("nous translator"), imageReply.text)
+            precondition(imageReply.text.lowercased().contains("hello local ocr"), imageReply.text)
+            precondition(imageTask.messages.first?.text == "", "Attachment markers are not a conversation question")
+            precondition(validationCalls == 0 && external.attempts == 0, "Recognition-only must not require conversation or external services")
+        }
 
         let documentID = store.add("", files: [file(document)]) { _ in "" }!
         let documentTask = try await settled(documentID, in: store)
@@ -107,17 +113,19 @@ private actor RecognitionGate {
         precondition(!answer(documentTask).pending)
         precondition(validationCalls == 0 && external.attempts == 0)
 
-        let mixedID = store.add("[Attachment: sample.png]\n[Attachment: notes.txt]", files: [file(image), file(document)]) { _ in "" }!
-        let mixedTask = try await settled(mixedID, in: store)
-        precondition(mixedTask.status == "completed")
-        let mixedText = answer(mixedTask).text
-        precondition(mixedText.contains("sample.png\n") && mixedText.contains("notes.txt\n"))
-        precondition(mixedText.contains(expectedDocument))
-        precondition(validationCalls == 0 && external.attempts == 0)
-        precondition(extractedCopies.allSatisfy { $0.hasPrefix(attachmentDirectory.path + "/") }, "Only isolated copied attachments are processed")
-        let preservedImage = try Data(contentsOf: image)
+        if !skipVision {
+            let mixedID = store.add("[Attachment: sample.png]\n[Attachment: notes.txt]", files: [file(image), file(document)]) { _ in "" }!
+            let mixedTask = try await settled(mixedID, in: store)
+            precondition(mixedTask.status == "completed")
+            let mixedText = answer(mixedTask).text
+            precondition(mixedText.contains("sample.png\n") && mixedText.contains("notes.txt\n"))
+            precondition(mixedText.contains(expectedDocument))
+            precondition(validationCalls == 0 && external.attempts == 0)
+            precondition(extractedCopies.allSatisfy { $0.hasPrefix(attachmentDirectory.path + "/") }, "Only isolated copied attachments are processed")
+            let preservedImage = try Data(contentsOf: image)
+            precondition(preservedImage == imageData, "The source image must remain unchanged")
+        }
         let preservedDocument = try String(contentsOf: document, encoding: .utf8)
-        precondition(preservedImage == imageData, "The source image must remain unchanged")
         precondition(preservedDocument == expectedDocument)
 
         // Explicit questions still require a conversation model, and fail before OCR

@@ -9,7 +9,13 @@ import sys
 import time
 
 source = Path(sys.argv[1]).resolve()
-installed = Path.home() / 'Applications/Nous Translator.app'
+candidates = [Path('/Applications/Nous Translator.app'), Path.home() / 'Applications/Nous Translator.app']
+found = [path for path in candidates if path.exists() or path.is_symlink()]
+if len(found) > 1:
+    raise SystemExit('Multiple Nous Translator installations found; keep only one copy before updating: ' + ', '.join(str(p) for p in found))
+if not found:
+    raise SystemExit('No existing Nous Translator installation found in /Applications or ~/Applications.')
+installed = found[0]
 info = plistlib.loads((source / 'Contents/Info.plist').read_bytes())
 if info.get('CFBundleIdentifier') != 'com.nous.translator':
     raise SystemExit('Candidate bundle identifier does not match Nous Translator.')
